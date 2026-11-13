@@ -1,0 +1,18 @@
+{
+  "name": "SIMMAS - Sistem Manajemen Magang Siswa",
+  "short_name": "SIMMAS",
+  "description": "Aplikasi manajemen magang terpadu untuk SMK",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
