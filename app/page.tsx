@@ -17,9 +17,12 @@ import { Logo } from "@/components/shared/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { fetchSettingsAction } from "@/app/actions/crud";
 
-export default function HomePage() {
-  const appName = "jagang company";
+export default async function HomePage() {
+  const settingsRes = await fetchSettingsAction();
+  const settings = settingsRes.data;
+  const appName = settings?.appName || "vernoncorp";
 
   return (
     <div className="min-h-screen flex flex-col font-sans selection:bg-blue-100 selection:text-blue-900">

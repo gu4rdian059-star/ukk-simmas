@@ -21,7 +21,7 @@ export default async function SiswaDashboardPage() {
   const data = await siswaService.getDashboard();
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* 1. GREETING BANNER */}
       <div className="rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 p-6 sm:p-8 text-white shadow-lg shadow-blue-500/10 flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>

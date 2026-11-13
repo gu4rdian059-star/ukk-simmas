@@ -27,65 +27,15 @@ import {
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "sonner";
 import type { TempatMagang } from "@/types/database";
+import {
+  createDudiAction,
+  updateDudiAction,
+  deleteDudiAction,
+  fetchDudiListAction,
+} from "@/app/actions/crud";
 
 export default function AdminDudiPage() {
-  const [dudiList, setDudiList] = React.useState<TempatMagang[]>([
-    {
-      id: "11111111-1111-1111-1111-111111111111",
-      nama_perusahaan: "PT. Universal Big Data",
-      alamat: "Jl. Tasikmadu No. 88, Malang",
-      kontak: "081234567890",
-      penanggung_jawab: "Budi Santoso, S.Kom.",
-      bidang_usaha: "Teknologi Informasi & Big Data",
-      kuota: 10,
-      activeSiswa: 7,
-      status: "terverifikasi",
-    },
-    {
-      id: "22222222-2222-2222-2222-222222222222",
-      nama_perusahaan: "PT. Telkom Indonesia",
-      alamat: "Jl. Ketintang No. 15, Surabaya",
-      kontak: "082198765432",
-      penanggung_jawab: "Siti Rahmawati, M.T.",
-      bidang_usaha: "Telekomunikasi & Jaringan",
-      kuota: 8,
-      activeSiswa: 5,
-      status: "terverifikasi",
-    },
-    {
-      id: "33333333-3333-3333-3333-333333333333",
-      nama_perusahaan: "PT. CEO Batu Giok Shangsai",
-      alamat: "Komp. Ruko Graha Family Blok B-12, Surabaya",
-      kontak: "085711223344",
-      penanggung_jawab: "David Wijaya",
-      bidang_usaha: "E-Commerce & Digital Marketing",
-      kuota: 5,
-      activeSiswa: 4,
-      status: "terverifikasi",
-    },
-    {
-      id: "44444444-4444-4444-4444-444444444444",
-      nama_perusahaan: "PT. Solusi Digital Nusantara",
-      alamat: "Jl. Manyar Kertoarjo No. 24, Surabaya",
-      kontak: "081344556677",
-      penanggung_jawab: "Ahmad Fauzi",
-      bidang_usaha: "Software House & App Dev",
-      kuota: 6,
-      activeSiswa: 3,
-      status: "terverifikasi",
-    },
-    {
-      id: "55555555-5555-5555-5555-555555555555",
-      nama_perusahaan: "CV. Media Grafika Kreatif",
-      alamat: "Jl. Margorejo Indah No. 5, Surabaya",
-      kontak: "089877665544",
-      penanggung_jawab: "Nurul Hidayati",
-      bidang_usaha: "Desain Grafis & Multimedia",
-      kuota: 4,
-      activeSiswa: 2,
-      status: "terverifikasi",
-    },
-  ]);
+  const [dudiList, setDudiList] = React.useState<TempatMagang[]>([]);
 
   const [search, setSearch] = React.useState("");
   const [filterStatus, setFilterStatus] = React.useState("Semua");
@@ -123,10 +73,36 @@ export default function AdminDudiPage() {
     return matchSearch && matchStatus;
   });
 
-  const totalDudi = 7;
-  const verifiedDudi = 6;
-  const totalKuota = 45;
-  const totalTerisi = 33;
+  const totalDudi = dudiList.length;
+  const verifiedDudi = dudiList.filter((d) => d.status === "terverifikasi").length;
+  const totalKuota = dudiList.reduce((acc, d) => acc + (d.kuota || 0), 0);
+  const totalTerisi = dudiList.reduce((acc, d) => acc + (d.activeSiswa || 0), 0);
+
+  // Fetch live from Supabase on mount
+  React.useEffect(() => {
+    async function loadLiveDudi() {
+      try {
+        const res = await fetchDudiListAction();
+        if (res.success && res.data && res.data.length > 0) {
+          const mapped: TempatMagang[] = res.data.map((d: any) => ({
+            id: d.id,
+            nama_perusahaan: d.nama_perusahaan,
+            alamat: d.alamat,
+            kontak: d.kontak,
+            penanggung_jawab: d.penanggung_jawab,
+            bidang_usaha: d.bidang_usaha,
+            kuota: d.kuota,
+            status: d.status,
+            activeSiswa: 3,
+          }));
+          setDudiList(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to load DUDI from Supabase:", err);
+      }
+    }
+    loadLiveDudi();
+  }, []);
 
   const handleOpenAdd = () => {
     setEditingDudi(null);
@@ -156,7 +132,7 @@ export default function AdminDudiPage() {
     setIsModalOpen(true);
   };
 
-  const handleSaveForm = (e: React.FormEvent) => {
+  const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nama_perusahaan || !formData.alamat || !formData.kontak) {
       toast.error("Mohon lengkapi Nama Perusahaan, Alamat, dan Kontak.");
@@ -164,33 +140,61 @@ export default function AdminDudiPage() {
     }
 
     if (editingDudi) {
+      const res = await updateDudiAction(editingDudi.id, {
+        ...formData,
+      });
+
+      if (!res.success) {
+        toast.error(`Gagal memperbarui data mitra DUDI: ${res.error}`);
+      } else {
+        toast.success("Data mitra DUDI berhasil diperbarui.");
+      }
+
       setDudiList((prev) =>
         prev.map((d) =>
           d.id === editingDudi.id ? { ...d, ...formData } : d
         )
       );
-      toast.success("Data mitra DUDI berhasil diperbarui.");
     } else {
+      const res = await createDudiAction({
+        nama_perusahaan: formData.nama_perusahaan,
+        bidang_usaha: formData.bidang_usaha,
+        penanggung_jawab: formData.penanggung_jawab,
+        kontak: formData.kontak,
+        alamat: formData.alamat,
+        kuota: formData.kuota,
+      });
+
+      if (!res.success) {
+        toast.error(`Gagal menyimpan data mitra DUDI: ${res.error}`);
+      } else {
+        toast.success("Mitra DUDI baru berhasil ditambahkan!");
+      }
+
       const newDudi: TempatMagang = {
-        id: Date.now().toString(),
+        id: res.data?.id || Date.now().toString(),
         ...formData,
         activeSiswa: 0,
       };
       setDudiList((prev) => [newDudi, ...prev]);
-      toast.success("Mitra DUDI baru berhasil ditambahkan.");
     }
     setIsModalOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deletingId) return;
+    const res = await deleteDudiAction(deletingId);
+    if (!res.success) {
+      toast.error(`Gagal menghapus data: ${res.error}`);
+    } else {
+      toast.success("Data mitra DUDI berhasil dihapus.");
+    }
     setDudiList((prev) => prev.filter((d) => d.id !== deletingId));
-    toast.success("Data DUDI berhasil dihapus.");
     setDeletingId(null);
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto font-sans">
+    <div className="space-y-6 w-full font-sans">
       {/* 1. TOP STAT CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
@@ -302,7 +306,22 @@ export default function AdminDudiPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {filtered.map((dudi) => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground mb-3">
+                        <Building2 className="h-6 w-6" />
+                      </div>
+                      <p className="font-bold text-sm text-foreground">Belum ada data mitra DUDI</p>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                        Tabel mitra DUDI di database Supabase saat ini masih kosong. Klik tombol &quot;+ Tambah Mitra DUDI&quot; di atas untuk menambahkan mitra baru.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((dudi) => (
                 <tr key={dudi.id} className="hover:bg-muted/20 transition-colors">
                   <td className="py-4 px-4 whitespace-nowrap">
                     <p className="font-bold text-foreground text-xs leading-tight">
@@ -397,7 +416,7 @@ export default function AdminDudiPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

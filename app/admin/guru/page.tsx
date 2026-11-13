@@ -29,37 +29,15 @@ import {
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "sonner";
 import type { Guru } from "@/types/database";
+import {
+  createGuruAction,
+  updateGuruAction,
+  deleteGuruAction,
+  fetchGuruListAction,
+} from "@/app/actions/crud";
 
 export default function AdminGuruPage() {
-  const [guruList, setGuruList] = React.useState<Guru[]>([
-    {
-      id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-      nip: "198501152010011012",
-      nama: "Guru Pembimbing, S.Kom.",
-      email: "guru@simmas.sch.id",
-      jurusan: "Rekayasa Perangkat Lunak",
-      status: "aktif",
-      activeSiswa: 3,
-    },
-    {
-      id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
-      nip: "198703202012022005",
-      nama: "Dra. Endang Wahyuni, M.Pd.",
-      email: "endang.wahyuni@simmas.sch.id",
-      jurusan: "Rekayasa Perangkat Lunak",
-      status: "aktif",
-      activeSiswa: 2,
-    },
-    {
-      id: "cccccccc-cccc-cccc-cccc-cccccccccccc",
-      nip: "199008122015031008",
-      nama: "Rian Pratama, S.Kom., M.Cs.",
-      email: "rian.pratama@simmas.sch.id",
-      jurusan: "Teknik Komputer dan Jaringan",
-      status: "aktif",
-      activeSiswa: 2,
-    },
-  ]);
+  const [guruList, setGuruList] = React.useState<Guru[]>([]);
 
   const [search, setSearch] = React.useState("");
   const [filterJurusan, setFilterJurusan] = React.useState("Semua");
@@ -96,10 +74,34 @@ export default function AdminGuruPage() {
     return matchSearch && matchJurusan && matchStatus;
   });
 
-  const totalGuru = 20;
-  const guruAktif = 18;
-  const totalBimbingan = 33;
-  const avgBimbingan = "1.6";
+  const totalGuru = guruList.length;
+  const guruAktif = guruList.filter((g) => g.status === "aktif").length;
+  const totalBimbingan = guruList.reduce((acc, g) => acc + (g.activeSiswa || 0), 0);
+  const avgBimbingan = totalGuru > 0 ? (totalBimbingan / totalGuru).toFixed(1) : "0";
+
+  // Fetch live from Supabase on mount
+  React.useEffect(() => {
+    async function loadLiveGuru() {
+      try {
+        const res = await fetchGuruListAction();
+        if (res.success && res.data && res.data.length > 0) {
+          const mapped: Guru[] = res.data.map((g: any) => ({
+            id: g.id,
+            nip: g.nip,
+            nama: g.nama,
+            email: g.email,
+            jurusan: g.jurusan || "Rekayasa Perangkat Lunak",
+            status: g.status || (g.is_active ? "aktif" : "nonaktif"),
+            activeSiswa: 3,
+          }));
+          setGuruList(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to load guru from Supabase:", err);
+      }
+    }
+    loadLiveGuru();
+  }, []);
 
   const handleOpenAdd = () => {
     setEditingGuru(null);
@@ -120,28 +122,56 @@ export default function AdminGuruPage() {
       nama: guru.nama,
       email: guru.email,
       jurusan: guru.jurusan || "Rekayasa Perangkat Lunak",
-      status: guru.status,
+      status: guru.status || "aktif",
     });
     setIsModalOpen(true);
   };
 
-  const handleSaveForm = (e: React.FormEvent) => {
+  const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nip || !formData.nama || !formData.email) {
       toast.error("Mohon lengkapi NIP, Nama, dan Email.");
       return;
     }
 
+    const currentStatus: "aktif" | "nonaktif" = formData.status === "nonaktif" ? "nonaktif" : "aktif";
+
     if (editingGuru) {
+      const res = await updateGuruAction(editingGuru.id, {
+        nip: formData.nip,
+        nama: formData.nama,
+        email: formData.email,
+        jurusan: formData.jurusan,
+        status: currentStatus,
+      });
+
+      if (!res.success) {
+        toast.error(`Gagal memperbarui data guru: ${res.error}`);
+      } else {
+        toast.success("Data guru berhasil diperbarui.");
+      }
+
       setGuruList((prev) =>
         prev.map((g) =>
           g.id === editingGuru.id ? { ...g, ...formData } : g
         )
       );
-      toast.success("Data guru berhasil diperbarui.");
     } else {
+      const res = await createGuruAction({
+        nip: formData.nip,
+        nama: formData.nama,
+        email: formData.email,
+        jurusan: formData.jurusan,
+      });
+
+      if (!res.success) {
+        toast.error(`Gagal menyimpan data guru: ${res.error}`);
+      } else {
+        toast.success("Guru pembimbing baru berhasil ditambahkan!");
+      }
+
       const newGuru: Guru = {
-        id: Date.now().toString(),
+        id: res.data?.id || Date.now().toString(),
         nip: formData.nip,
         nama: formData.nama,
         email: formData.email,
@@ -150,20 +180,24 @@ export default function AdminGuruPage() {
         activeSiswa: 0,
       };
       setGuruList((prev) => [newGuru, ...prev]);
-      toast.success("Guru pembimbing baru berhasil ditambahkan.");
     }
     setIsModalOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deletingId) return;
+    const res = await deleteGuruAction(deletingId);
+    if (!res.success) {
+      toast.error(`Gagal menghapus data: ${res.error}`);
+    } else {
+      toast.success("Data guru berhasil dihapus.");
+    }
     setGuruList((prev) => prev.filter((g) => g.id !== deletingId));
-    toast.success("Data guru berhasil dihapus.");
     setDeletingId(null);
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto font-sans">
+    <div className="space-y-6 w-full font-sans">
       {/* 1. TOP STAT CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
@@ -289,7 +323,22 @@ export default function AdminGuruPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {filtered.map((guru) => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground mb-3">
+                        <Users className="h-6 w-6" />
+                      </div>
+                      <p className="font-bold text-sm text-foreground">Belum ada data guru</p>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                        Tabel guru di database Supabase saat ini masih kosong. Klik tombol &quot;+ Tambah Guru&quot; di atas untuk menambahkan guru pembimbing baru.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((guru) => (
                 <tr key={guru.id} className="hover:bg-muted/20 transition-colors">
                   <td className="py-4 px-4 font-mono font-medium text-foreground whitespace-nowrap">
                     {guru.nip}
@@ -382,7 +431,7 @@ export default function AdminGuruPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

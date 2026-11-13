@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginWithSupabase } from "@/app/actions/auth";
+import { fetchSettingsAction } from "@/app/actions/crud";
 import { toast } from "sonner";
 import type { UserRole } from "@/types/database";
 
@@ -27,6 +28,19 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+  const [appName, setAppName] = React.useState("vernoncorp");
+
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("simmas_app_name");
+      if (cached) setAppName(cached);
+    }
+    fetchSettingsAction().then((res) => {
+      if (res?.success && res.data?.appName) {
+        setAppName(res.data.appName);
+      }
+    });
+  }, []);
 
   const demoAccounts = [
     { email: "admin@simmas.sch.id", role: "Admin" },
@@ -127,7 +141,7 @@ export default function LoginPage() {
               <GraduationCap className="h-6 w-6" />
             </div>
             <span className="text-lg font-bold tracking-tight text-primary-foreground">
-              jagang company
+              {appName}
             </span>
           </Link>
 

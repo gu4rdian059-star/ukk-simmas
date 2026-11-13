@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { cn } from "@/lib/utils";
+import { fetchSettingsAction } from "@/app/actions/crud";
 import type { UserRole } from "@/types/database";
 
 interface NavItem {
@@ -109,11 +110,44 @@ export function DashboardSidebar({
   role,
   userName = "Pengguna",
   userEmail = "user@simmas.sch.id",
-  appName = "jagang company",
+  appName = "vernoncorp",
   isOpenMobile = false,
   onCloseMobile,
 }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const [currentAppName, setCurrentAppName] = React.useState<string>(appName);
+
+  React.useEffect(() => {
+    // 1. Check cached app name from localStorage for zero flash
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem("simmas_app_name");
+      if (cached) {
+        setCurrentAppName(cached);
+      }
+    }
+
+    // 2. Fetch latest app name from server/database
+    fetchSettingsAction().then((res) => {
+      if (res?.success && res.data?.appName) {
+        setCurrentAppName(res.data.appName);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("simmas_app_name", res.data.appName);
+        }
+      }
+    });
+
+    // 3. Listen to instantaneous app_settings_updated event
+    const handleUpdate = (e: any) => {
+      if (e.detail?.appName) {
+        setCurrentAppName(e.detail.appName);
+      }
+    };
+
+    window.addEventListener("app_settings_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("app_settings_updated", handleUpdate);
+    };
+  }, []);
 
   const navGroups =
     role === "admin" ? adminNav : role === "guru" ? guruNav : siswaNav;
@@ -133,12 +167,12 @@ export function DashboardSidebar({
       : "Siswa Magang";
 
   const content = (
-    <div className="flex h-full w-64 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
+    <div className="flex h-screen max-h-screen w-64 flex-col justify-between border-r border-border bg-sidebar text-sidebar-foreground select-none">
       {/* Sidebar Header */}
-      <div className="flex h-16 items-center justify-between border-b border-border/80 px-4">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b border-border/80 px-4">
         <Link href="/" className="hover:opacity-90 transition-opacity">
           <Logo
-            title={appName}
+            title={currentAppName}
             subtitle={
               role === "admin"
                 ? "ADMINISTRATOR"
@@ -151,15 +185,15 @@ export function DashboardSidebar({
         <button
           type="button"
           onClick={onCloseMobile}
-          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted border border-border/60 transition-colors"
-          aria-label="Toggle sidebar"
+          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted border border-border/60 transition-colors lg:hidden"
+          aria-label="Tutup sidebar"
         >
           <PanelLeftClose className="h-4 w-4" />
         </button>
       </div>
 
       {/* Sidebar Nav Items */}
-      <div className="flex-1 overflow-y-auto px-3.5 py-4 space-y-6">
+      <div className="flex-1 overflow-y-auto min-h-0 px-3.5 py-4 space-y-6">
         {navGroups.map((group) => (
           <div key={group.label} className="space-y-1">
             <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
@@ -201,7 +235,7 @@ export function DashboardSidebar({
       </div>
 
       {/* Sidebar Footer User Box */}
-      <div className="border-t border-border/80 p-3.5">
+      <div className="shrink-0 border-t border-border/80 p-3.5 bg-sidebar">
         <div className="flex items-center gap-3 rounded-xl bg-sidebar-accent/60 p-2.5">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs">
             {initials}
@@ -221,8 +255,8 @@ export function DashboardSidebar({
 
   return (
     <>
-      {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex shrink-0 min-h-screen">
+      {/* Desktop Sidebar - Sticky Top-0, stays in place while body scrolls */}
+      <aside className="hidden lg:flex shrink-0 sticky top-0 h-screen z-30">
         {content}
       </aside>
 
@@ -233,7 +267,7 @@ export function DashboardSidebar({
             className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in"
             onClick={onCloseMobile}
           />
-          <div className="relative z-50 animate-in slide-in-from-left duration-200">
+          <div className="relative z-50 animate-in slide-in-from-left duration-200 h-screen max-h-screen">
             {content}
           </div>
         </div>

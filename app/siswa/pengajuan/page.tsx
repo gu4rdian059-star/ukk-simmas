@@ -96,7 +96,7 @@ export default function SiswaPengajuanPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">

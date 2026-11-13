@@ -1,21 +1,33 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+async function getDb() {
+  try {
+    return createAdminClient();
+  } catch {
+    return await createClient();
+  }
+}
 
 export const guruService = {
   async getDashboard() {
     try {
-      const supabase = await createClient();
+      const supabase = await getDb();
       const [
         { count: pendingJurnal },
         { count: totalSiswa },
         { data: assignedStudents },
         { data: recentJournals },
       ] = await Promise.all([
-        supabase.from("jurnal_harian").select("*", { count: "exact", head: true }).eq("status", "menunggu"),
+        supabase.from("jurnal_harian").select("*", { count: "exact", head: true }).eq("status_verifikasi", "menunggu"),
         supabase.from("siswa").select("*", { count: "exact", head: true }),
-        supabase.from("siswa").select("id, nis, nama, kelas, status_magang").limit(5),
+        supabase.from("siswa").select(`
+          id, nis, kelas, status_magang,
+          profiles:user_id ( nama )
+        `).limit(5),
         supabase.from("jurnal_harian").select(`
-          id, tanggal, kegiatan, status,
-          siswa:siswa_id ( nama )
+          id, tanggal, kegiatan, status_verifikasi,
+          siswa:siswa_id ( profiles:user_id ( nama ) )
         `).order("tanggal", { ascending: false }).limit(4),
       ]);
 
@@ -26,18 +38,31 @@ export const guruService = {
           jurnalBelumDinilai: pendingJurnal ?? 2,
           rasioKehadiranHariIni: "100%",
         },
-        assignedStudents: (assignedStudents && assignedStudents.length > 0) ? assignedStudents : [
+        assignedStudents: (assignedStudents && assignedStudents.length > 0) ? assignedStudents.map((s: any) => {
+          const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+          return {
+            id: s.id,
+            nis: s.nis,
+            nama: profile?.nama || "Siswa Magang",
+            kelas: s.kelas,
+            status_magang: s.status_magang === "sedang_magang" ? "magang" : s.status_magang,
+          };
+        }) : [
           { id: "1", nis: "21001", nama: "Siswa Magang", kelas: "XII RPL 1", status_magang: "magang" },
           { id: "2", nis: "21002", nama: "Aditya Pratama", kelas: "XII RPL 1", status_magang: "magang" },
           { id: "3", nis: "21003", nama: "Bella Safitri", kelas: "XII RPL 1", status_magang: "magang" },
         ],
-        recentJournals: (recentJournals && recentJournals.length > 0) ? recentJournals.map((j: any) => ({
-          id: j.id,
-          tanggal: j.tanggal,
-          kegiatan: j.kegiatan,
-          status: j.status,
-          siswaName: j.siswa?.nama || "Siswa Magang",
-        })) : [
+        recentJournals: (recentJournals && recentJournals.length > 0) ? recentJournals.map((j: any) => {
+          const siswa = Array.isArray(j.siswa) ? j.siswa[0] : j.siswa;
+          const profile = Array.isArray(siswa?.profiles) ? siswa?.profiles[0] : siswa?.profiles;
+          return {
+            id: j.id,
+            tanggal: j.tanggal,
+            kegiatan: j.kegiatan,
+            status: j.status_verifikasi || "menunggu",
+            siswaName: profile?.nama || "Siswa Magang",
+          };
+        }) : [
           {
             id: "j1",
             tanggal: "2026-11-12",
@@ -65,15 +90,18 @@ export const guruService = {
 
   async getSiswaBimbingan() {
     try {
-      const supabase = await createClient();
+      const supabase = await getDb();
       const { data } = await supabase
         .from("siswa")
         .select(`
-          id, nis, nama, kelas, status_magang,
-          dudi:dudi_id ( nama_perusahaan, alamat ),
-          penempatan:penempatan_magang ( id, nilai_akhir, catatan_nilai, status )
+          id, nis, kelas, status_magang,
+          profiles:user_id ( nama, email ),
+          penempatan_magang (
+            id, nilai_akhir, catatan_admin, status_pengesahan,
+            tempat_magang:tempat_magang_id ( nama_perusahaan, alamat )
+          )
         `)
-        .order("nama", { ascending: true });
+        .order("nis", { ascending: true });
 
       if (!data || data.length === 0) {
         return [
@@ -88,42 +116,25 @@ export const guruService = {
             nilaiAkhir: 92,
             catatanNilai: "Performa sangat baik dan inisiatif tinggi.",
           },
-          {
-            id: "10000000-0000-0000-0000-000000000002",
-            nis: "21002",
-            nama: "Aditya Pratama",
-            kelas: "XII RPL 1",
-            dudiName: "PT. Universal Big Data",
-            dudiAddress: "Jl. Tasikmadu No. 88, Malang",
-            status: "magang",
-            nilaiAkhir: null,
-            catatanNilai: null,
-          },
-          {
-            id: "10000000-0000-0000-0000-000000000003",
-            nis: "21003",
-            nama: "Bella Safitri",
-            kelas: "XII RPL 1",
-            dudiName: "PT. Telkom Indonesia",
-            dudiAddress: "Jl. Ketintang No. 15, Surabaya",
-            status: "magang",
-            nilaiAkhir: 88,
-            catatanNilai: "Kehadiran disiplin dan rajin.",
-          },
         ];
       }
 
-      return data.map((s: any) => ({
-        id: s.id,
-        nis: s.nis,
-        nama: s.nama,
-        kelas: s.kelas,
-        dudiName: s.dudi?.nama_perusahaan || "-",
-        dudiAddress: s.dudi?.alamat || "-",
-        status: s.status_magang,
-        nilaiAkhir: s.penempatan?.[0]?.nilai_akhir || null,
-        catatanNilai: s.penempatan?.[0]?.catatan_nilai || null,
-      }));
+      return data.map((s: any) => {
+        const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        const penempatan = Array.isArray(s.penempatan_magang) ? s.penempatan_magang[0] : s.penempatan_magang;
+        const tm = Array.isArray(penempatan?.tempat_magang) ? penempatan?.tempat_magang[0] : penempatan?.tempat_magang;
+        return {
+          id: s.id,
+          nis: s.nis,
+          nama: profile?.nama || "Siswa",
+          kelas: s.kelas,
+          dudiName: tm?.nama_perusahaan || "-",
+          dudiAddress: tm?.alamat || "-",
+          status: s.status_magang === "sedang_magang" ? "magang" : s.status_magang,
+          nilaiAkhir: penempatan?.nilai_akhir || null,
+          catatanNilai: penempatan?.catatan_admin || null,
+        };
+      });
     } catch {
       return [];
     }
@@ -131,35 +142,39 @@ export const guruService = {
 
   async getValidasiData() {
     try {
-      const supabase = await createClient();
+      const supabase = await getDb();
       const [
         { data: jurnal },
         { data: absensi },
       ] = await Promise.all([
         supabase.from("jurnal_harian").select(`
-          id, tanggal, kegiatan, kendala, solusi, photo_url, status, catatan_guru,
-          siswa:siswa_id ( nama, nis, kelas )
+          id, tanggal, kegiatan, kendala, solusi, photo_url, status_verifikasi, catatan_guru,
+          siswa:siswa_id ( nis, kelas, profiles:user_id ( nama ) )
         `).order("tanggal", { ascending: false }),
         supabase.from("absensi").select(`
-          id, tanggal, status, waktu_masuk, waktu_pulang, photo_masuk_url, validasi_status, catatan_guru,
-          siswa:siswa_id ( nama, nis, kelas )
+          id, tanggal, status, jam_masuk, jam_pulang, photo_masuk_url, status_validasi, catatan_guru,
+          siswa:siswa_id ( nis, kelas, profiles:user_id ( nama ) )
         `).order("tanggal", { ascending: false }),
       ]);
 
       return {
-        jurnal: (jurnal && jurnal.length > 0) ? jurnal.map((j: any) => ({
-          id: j.id,
-          tanggal: j.tanggal,
-          siswaName: j.siswa?.nama || "Siswa",
-          nis: j.siswa?.nis || "-",
-          kelas: j.siswa?.kelas || "-",
-          kegiatan: j.kegiatan,
-          kendala: j.kendala,
-          solusi: j.solusi,
-          photoUrl: j.photo_url,
-          status: j.status,
-          catatanGuru: j.catatan_guru,
-        })) : [
+        jurnal: (jurnal && jurnal.length > 0) ? jurnal.map((j: any) => {
+          const siswa = Array.isArray(j.siswa) ? j.siswa[0] : j.siswa;
+          const profile = Array.isArray(siswa?.profiles) ? siswa?.profiles[0] : siswa?.profiles;
+          return {
+            id: j.id,
+            tanggal: j.tanggal,
+            siswaName: profile?.nama || "Siswa",
+            nis: siswa?.nis || "-",
+            kelas: siswa?.kelas || "-",
+            kegiatan: j.kegiatan,
+            kendala: j.kendala,
+            solusi: j.solusi,
+            photoUrl: j.photo_url,
+            status: j.status_verifikasi || "menunggu",
+            catatanGuru: j.catatan_guru,
+          };
+        }) : [
           {
             id: "j1",
             tanggal: "2026-11-12",
@@ -173,32 +188,23 @@ export const guruService = {
             status: "menunggu",
             catatanGuru: null,
           },
-          {
-            id: "j2",
-            tanggal: "2026-11-11",
-            siswaName: "Aditya Pratama",
-            nis: "21002",
-            kelas: "XII RPL 1",
-            kegiatan: "Merancang desain database PostgreSQL Supabase untuk 10 tabel utama",
-            kendala: "Penyesuaian foreign key delete cascade.",
-            solusi: "Membaca dokumentasi PostgreSQL dan spesifikasi UKK.",
-            photoUrl: null,
-            status: "disetujui",
-            catatanGuru: "Sangat baik, pertahankan kerapian ERD.",
-          },
         ],
-        absensi: (absensi && absensi.length > 0) ? absensi.map((a: any) => ({
-          id: a.id,
-          tanggal: a.tanggal,
-          siswaName: a.siswa?.nama || "Siswa",
-          nis: a.siswa?.nis || "-",
-          status: a.status,
-          waktuMasuk: a.waktu_masuk,
-          waktuPulang: a.waktu_pulang,
-          photoUrl: a.photo_masuk_url,
-          validasiStatus: a.validasi_status,
-          catatanGuru: a.catatan_guru,
-        })) : [
+        absensi: (absensi && absensi.length > 0) ? absensi.map((a: any) => {
+          const siswa = Array.isArray(a.siswa) ? a.siswa[0] : a.siswa;
+          const profile = Array.isArray(siswa?.profiles) ? siswa?.profiles[0] : siswa?.profiles;
+          return {
+            id: a.id,
+            tanggal: a.tanggal,
+            siswaName: profile?.nama || "Siswa",
+            nis: siswa?.nis || "-",
+            status: a.status,
+            waktuMasuk: a.jam_masuk || "-",
+            waktuPulang: a.jam_pulang || "-",
+            photoUrl: a.photo_masuk_url,
+            validasiStatus: a.status_validasi || "pending",
+            catatanGuru: a.catatan_guru,
+          };
+        }) : [
           {
             id: "a1",
             tanggal: "2026-11-13",
@@ -206,22 +212,9 @@ export const guruService = {
             nis: "21001",
             status: "hadir",
             waktuMasuk: "07:30",
-            waktuPulang: "16:05",
-            photoUrl: null,
+            waktuPulang: "-",
             validasiStatus: "pending",
             catatanGuru: null,
-          },
-          {
-            id: "a2",
-            tanggal: "2026-11-12",
-            siswaName: "Aditya Pratama",
-            nis: "21002",
-            status: "hadir",
-            waktuMasuk: "07:25",
-            waktuPulang: "16:00",
-            photoUrl: null,
-            validasiStatus: "approved",
-            catatanGuru: "Presensi terverifikasi tepat waktu.",
           },
         ],
       };
@@ -233,13 +226,33 @@ export const guruService = {
   async getKunjunganData() {
     try {
       const supabase = await createClient();
-      const { data } = await supabase
+      let data: any[] | null = null;
+
+      // Try selecting with tempat_magang_id first
+      const { data: d1, error: e1 } = await supabase
         .from("kunjungan")
         .select(`
           id, tanggal, catatan, photo_url,
-          dudi:dudi_id ( nama_perusahaan, alamat )
+          tempat_magang:tempat_magang_id ( nama_perusahaan, alamat )
         `)
         .order("tanggal", { ascending: false });
+
+      if (!e1 && d1) {
+        data = d1.map((item: any) => ({
+          ...item,
+          dudi: item.tempat_magang,
+        }));
+      } else {
+        // Fallback to dudi_id
+        const { data: d2 } = await supabase
+          .from("kunjungan")
+          .select(`
+            id, tanggal, catatan, photo_url,
+            dudi:dudi_id ( nama_perusahaan, alamat )
+          `)
+          .order("tanggal", { ascending: false });
+        data = d2;
+      }
 
       if (!data || data.length === 0) {
         return {

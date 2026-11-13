@@ -8,18 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { updateSettingsAction } from "@/app/actions/crud";
+import { updateSettingsAction, fetchSettingsAction } from "@/app/actions/crud";
 import { toast } from "sonner";
 import type { AppSettings } from "@/types/database";
 
 export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = React.useState("identitas");
   const [isSaving, setIsSaving] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   const [settings, setSettings] = React.useState({
-    appName: "jagang company",
+    appName: "vernoncorp",
     appDescription: "Sistem Informasi Manajemen Magang Siswa",
-    contactEmail: "info@simmas.sch.id",
+    contactEmail: "info@vernoncorp.sch.id",
     landingHeroTitle: "Magang\nlebih\nteratur.",
     landingHeroSubtitle: "Sistem Informasi Manajemen Magang Siswa",
     landingHeroDescription:
@@ -32,14 +33,46 @@ export default function AdminSettingsPage() {
     principalNip: "196503151989031008",
   });
 
+  React.useEffect(() => {
+    async function loadSettings() {
+      try {
+        const res = await fetchSettingsAction();
+        if (res.success && res.data) {
+          setSettings(res.data);
+          if (res.data.appName && typeof window !== "undefined") {
+            localStorage.setItem("simmas_app_name", res.data.appName);
+          }
+        }
+      } catch (err) {
+        console.error("Gagal memuat pengaturan:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadSettings();
+  }, []);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     try {
-      await updateSettingsAction(settings);
-      toast.success("Pengaturan sistem berhasil disimpan!");
-    } catch {
-      toast.error("Gagal menyimpan pengaturan.");
+      const res = await updateSettingsAction(settings);
+      if (!res.success) {
+        throw new Error(res.error || "Gagal menyimpan");
+      }
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("simmas_app_name", settings.appName);
+        window.dispatchEvent(
+          new CustomEvent("app_settings_updated", {
+            detail: { appName: settings.appName },
+          })
+        );
+      }
+
+      toast.success("Pengaturan sistem berhasil diperbarui");
+    } catch (err: any) {
+      toast.error(err.message || "Gagal menyimpan pengaturan.");
     } finally {
       setIsSaving(false);
     }
@@ -218,12 +251,17 @@ export default function AdminSettingsPage() {
               type="submit"
               size="lg"
               className="rounded-xl px-7 font-bold gap-2 shadow-sm"
-              disabled={isSaving}
+              disabled={isSaving || isLoading}
             >
               {isSaving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Menyimpan...
+                </>
+              ) : isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Memuat Pengaturan...
                 </>
               ) : (
                 <>

@@ -1,36 +1,53 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+async function getDb() {
+  try {
+    return createAdminClient();
+  } catch {
+    return await createClient();
+  }
+}
 
 export const siswaService = {
   async getDashboard() {
     try {
-      const supabase = await createClient();
+      const supabase = await getDb();
       const { data: siswa } = await supabase
         .from("siswa")
         .select(`
-          id, nis, nama, kelas, status_magang,
-          guru:guru_id ( nama, nip ),
-          dudi:dudi_id ( nama_perusahaan, alamat )
+          id, nis, kelas, status_magang,
+          profiles:user_id ( nama, email ),
+          penempatan:penempatan_magang (
+            id,
+            tempat_magang:tempat_magang_id ( nama_perusahaan, alamat ),
+            guru:guru_id ( nip, profiles:user_id ( nama ) )
+          )
         `)
-        .eq("email", "siswa@simmas.sch.id")
+        .limit(1)
         .maybeSingle();
 
       const s = siswa as any;
-      const hasPlacement = s?.status_magang === "magang";
+      const profile = Array.isArray(s?.profiles) ? s?.profiles[0] : s?.profiles;
+      const penempatan = Array.isArray(s?.penempatan) ? s?.penempatan[0] : s?.penempatan;
+      const tm = Array.isArray(penempatan?.tempat_magang) ? penempatan?.tempat_magang[0] : penempatan?.tempat_magang;
+      const g = Array.isArray(penempatan?.guru) ? penempatan?.guru[0] : penempatan?.guru;
+      const guruProfile = Array.isArray(g?.profiles) ? g?.profiles[0] : g?.profiles;
 
       return {
-        siswa: s || {
-          id: "10000000-0000-0000-0000-000000000001",
-          nama: "Siswa Magang",
-          nis: "21001",
-          kelas: "XII RPL 1",
-          status_magang: "magang",
+        siswa: {
+          id: s?.id || "10000000-0000-0000-0000-000000000001",
+          nama: profile?.nama || "Siswa Magang",
+          nis: s?.nis || "21001",
+          kelas: s?.kelas || "XII RPL 1",
+          status_magang: s?.status_magang || "sedang_magang",
         },
         hasPlacement: true,
         placementInfo: {
-          dudiName: s?.dudi?.nama_perusahaan || (Array.isArray(s?.dudi) ? s?.dudi[0]?.nama_perusahaan : "PT. Universal Big Data"),
-          dudiAddress: s?.dudi?.alamat || (Array.isArray(s?.dudi) ? s?.dudi[0]?.alamat : "Jl. Tasikmadu No. 88, Malang"),
-          guruName: s?.guru?.nama || (Array.isArray(s?.guru) ? s?.guru[0]?.nama : "Guru Pembimbing, S.Kom."),
-          guruNip: s?.guru?.nip || (Array.isArray(s?.guru) ? s?.guru[0]?.nip : "198501152010011012"),
+          dudiName: tm?.nama_perusahaan || "PT. Universal Big Data",
+          dudiAddress: tm?.alamat || "Jl. Tasikmadu No. 88, Malang",
+          guruName: guruProfile?.nama || "Guru Pembimbing, S.Kom.",
+          guruNip: g?.nip || "198501152010011012",
           periode: "15 Juli 2026 - 15 Desember 2026",
         },
         stats: {
@@ -57,20 +74,23 @@ export const siswaService = {
 
   async getPengajuanData() {
     try {
-      const supabase = await createClient();
+      const supabase = await getDb();
       const [
         { data: dudiList },
         { data: riwayat },
       ] = await Promise.all([
-        supabase.from("tempat_magang").select("*").eq("status", "terverifikasi"),
+        supabase.from("tempat_magang").select("*"),
         supabase.from("pengajuan_magang").select(`
-          id, posisi, tanggal_mulai, tanggal_selesai, status, alasan_penolakan, created_at,
-          dudi:dudi_id ( nama_perusahaan, alamat )
-        `).order("created_at", { ascending: false }),
+          id, posisi, tanggal_mulai, tanggal_selesai, status, catatan_penolakan, tanggal_pengajuan,
+          tempat_magang:tempat_magang_id ( nama_perusahaan, alamat )
+        `).order("tanggal_pengajuan", { ascending: false }),
       ]);
 
       return {
-        dudiList: (dudiList && dudiList.length > 0) ? dudiList : [
+        dudiList: (dudiList && dudiList.length > 0) ? dudiList.map((d: any) => ({
+          ...d,
+          siswaAktif: 3,
+        })) : [
           {
             id: "11111111-1111-1111-1111-111111111111",
             nama_perusahaan: "PT. Universal Big Data",
@@ -96,17 +116,20 @@ export const siswaService = {
             siswaAktif: 3,
           },
         ],
-        riwayat: (riwayat && riwayat.length > 0) ? riwayat.map((r: any) => ({
-          id: r.id,
-          dudiName: r.dudi?.nama_perusahaan || "Pengajuan Usulan",
-          dudiAddress: r.dudi?.alamat || "-",
-          posisi: r.posisi,
-          tanggalMulai: r.tanggal_mulai,
-          tanggalSelesai: r.tanggal_selesai,
-          status: r.status,
-          alasanPenolakan: r.alasan_penolakan,
-          tanggalPengajuan: r.created_at?.slice(0, 10),
-        })) : [
+        riwayat: (riwayat && riwayat.length > 0) ? riwayat.map((r: any) => {
+          const tm = Array.isArray(r.tempat_magang) ? r.tempat_magang[0] : r.tempat_magang;
+          return {
+            id: r.id,
+            dudiName: tm?.nama_perusahaan || "Pengajuan Usulan",
+            dudiAddress: tm?.alamat || "-",
+            posisi: r.posisi,
+            tanggalMulai: r.tanggal_mulai,
+            tanggalSelesai: r.tanggal_selesai,
+            status: r.status,
+            alasanPenolakan: r.catatan_penolakan,
+            tanggalPengajuan: r.tanggal_pengajuan,
+          };
+        }) : [
           {
             id: "q1",
             dudiName: "PT. Universal Big Data",
@@ -126,7 +149,7 @@ export const siswaService = {
 
   async getAbsensiData() {
     try {
-      const supabase = await createClient();
+      const supabase = await getDb();
       const todayStr = new Date().toISOString().slice(0, 10);
 
       const [
@@ -138,7 +161,13 @@ export const siswaService = {
       ]);
 
       return {
-        today: todayRecord || {
+        today: todayRecord ? {
+          clockedIn: Boolean(todayRecord.jam_masuk || todayRecord.waktu_masuk),
+          clockedOut: Boolean(todayRecord.jam_pulang || todayRecord.waktu_pulang),
+          waktuMasuk: todayRecord.jam_masuk || todayRecord.waktu_masuk || "07:30",
+          waktuPulang: todayRecord.jam_pulang || todayRecord.waktu_pulang || null,
+          status: todayRecord.status || "hadir",
+        } : {
           clockedIn: true,
           clockedOut: false,
           waktuMasuk: "07:30",
@@ -149,11 +178,11 @@ export const siswaService = {
           id: h.id,
           tanggal: h.tanggal,
           status: h.status,
-          waktuMasuk: h.waktu_masuk || "-",
-          waktuPulang: h.waktu_pulang || "-",
+          waktuMasuk: h.jam_masuk || h.waktu_masuk || "-",
+          waktuPulang: h.jam_pulang || h.waktu_pulang || "-",
           photoMasukUrl: h.photo_masuk_url,
           photoPulangUrl: h.photo_pulang_url,
-          validasiStatus: h.validasi_status,
+          validasiStatus: h.status_validasi || h.validasi_status,
           catatanGuru: h.catatan_guru,
         })) : [
           {
@@ -174,15 +203,6 @@ export const siswaService = {
             validasiStatus: "approved",
             catatanGuru: "Tepat waktu.",
           },
-          {
-            id: "a3",
-            tanggal: "2026-11-11",
-            status: "hadir",
-            waktuMasuk: "07:25",
-            waktuPulang: "16:00",
-            validasiStatus: "approved",
-            catatanGuru: "Hadir lengkap.",
-          },
         ],
       };
     } catch {
@@ -192,7 +212,7 @@ export const siswaService = {
 
   async getJurnalData() {
     try {
-      const supabase = await createClient();
+      const supabase = await getDb();
       const { data } = await supabase
         .from("jurnal_harian")
         .select("*")
@@ -220,16 +240,6 @@ export const siswaService = {
             status: "disetujui",
             catatanGuru: "Sangat baik, pertahankan kerapian ERD.",
           },
-          {
-            id: "j3",
-            tanggal: "2026-11-10",
-            kegiatan: "Setup repositori Next.js 16 dengan TypeScript dan Tailwind CSS",
-            kendala: "Konfigurasi Tailwind CSS v4 dengan variabel CSS.",
-            solusi: "Menyesuaikan @theme inline di globals.css.",
-            photoUrl: null,
-            status: "disetujui",
-            catatanGuru: "Bagus.",
-          },
         ];
       }
 
@@ -240,7 +250,7 @@ export const siswaService = {
         kendala: j.kendala,
         solusi: j.solusi,
         photoUrl: j.photo_url,
-        status: j.status,
+        status: j.status_verifikasi || j.status || "menunggu",
         catatanGuru: j.catatan_guru,
       }));
     } catch {

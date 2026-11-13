@@ -14,7 +14,7 @@ interface LogoProps {
 export function Logo({
   className,
   iconClassName,
-  title = "jagang company",
+  title = "vernoncorp",
   subtitle,
   showText = true,
   textSize = "text-sm",

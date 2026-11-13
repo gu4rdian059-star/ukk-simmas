@@ -136,7 +136,7 @@ export default function GuruJurnalPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
@@ -197,8 +197,8 @@ export default function GuruJurnalPage() {
                             j.status === "disetujui"
                               ? "success"
                               : j.status === "menunggu"
-                              ? "warning"
-                              : "destructive"
+                                ? "warning"
+                                : "destructive"
                           }
                           className="text-[10px] uppercase font-bold"
                         >
@@ -263,8 +263,8 @@ export default function GuruJurnalPage() {
                             a.validasiStatus === "approved"
                               ? "success"
                               : a.validasiStatus === "pending"
-                              ? "warning"
-                              : "destructive"
+                                ? "warning"
+                                : "destructive"
                           }
                           className="text-[10px] uppercase font-bold"
                         >

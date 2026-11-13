@@ -18,7 +18,8 @@ export interface Guru {
   email: string;
   jurusan: string;
   no_telepon?: string | null;
-  status: 'aktif' | 'nonaktif';
+  status?: 'aktif' | 'nonaktif';
+  is_active?: boolean;
   activeSiswa?: number;
   created_at?: string;
   updated_at?: string;
@@ -141,7 +142,8 @@ export interface JurnalHarian {
 export interface Kunjungan {
   id: string;
   guru_id: string;
-  dudi_id: string;
+  dudi_id?: string;
+  tempat_magang_id?: string;
   tanggal: string;
   catatan: string;
   photo_url?: string | null;

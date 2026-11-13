@@ -39,7 +39,7 @@ export default function GuruLayout({
           breadcrumbs={[{ title: "Guru" }, { title: currentTitle }]}
           onToggleSidebar={() => setMobileOpen(!mobileOpen)}
         />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <main className="flex-1 p-6">
           {children}
         </main>
       </div>

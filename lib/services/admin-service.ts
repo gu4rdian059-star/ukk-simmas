@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type {
   Guru,
   Siswa,
@@ -8,6 +9,14 @@ import type {
   ActivityLog,
   AppSettings,
 } from "@/types/database";
+
+async function getAdminDb() {
+  try {
+    return createAdminClient();
+  } catch {
+    return await createClient();
+  }
+}
 
 // Seed fallbacks for instant development & offline preview
 const defaultSettings: AppSettings = {
@@ -31,7 +40,7 @@ export const adminService = {
   // 1. Dashboard Stats
   async getDashboardStats() {
     try {
-      const supabase = await createClient();
+      const supabase = await getAdminDb();
 
       // Parallel queries for fast performance
       const [
@@ -47,17 +56,17 @@ export const adminService = {
         supabase.from("tempat_magang").select("*", { count: "exact", head: true }),
         supabase.from("pengajuan_magang").select("*", { count: "exact", head: true }).eq("status", "menunggu"),
         supabase.from("tempat_magang").select("id, nama_perusahaan, alamat, kuota").limit(5),
-        supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(5),
+        supabase.from("activity_logs").select("*").order("timestamp", { ascending: false }).limit(5),
       ]);
 
       return {
-        totalSiswa: totalSiswa || 33,
-        totalGuru: totalGuru || 20,
-        totalDudi: totalDudi || 7,
-        pendingPengajuan: pendingPengajuan ?? 1,
+        totalSiswa: totalSiswa ?? 0,
+        totalGuru: totalGuru ?? 0,
+        totalDudi: totalDudi ?? 0,
+        pendingPengajuan: pendingPengajuan ?? 0,
         statusCounts: {
-          disetujui: 22,
-          menunggu: pendingPengajuan ?? 1,
+          disetujui: 0,
+          menunggu: pendingPengajuan ?? 0,
           ditolak: 0,
         },
         dudiDistribution: (dudiDist && dudiDist.length > 0) ? dudiDist.map((d: any) => ({
@@ -145,14 +154,32 @@ export const adminService = {
         `)
         .order("nama", { ascending: true });
 
-      const { data: kunjungan } = await supabase
+      let kunjungan: any[] | null = null;
+      const { data: k1, error: ke1 } = await supabase
         .from("kunjungan")
         .select(`
           id, tanggal, catatan, photo_url,
           guru:guru_id ( nama ),
-          dudi:dudi_id ( nama_perusahaan )
+          tempat_magang:tempat_magang_id ( nama_perusahaan )
         `)
         .order("tanggal", { ascending: false });
+
+      if (!ke1 && k1) {
+        kunjungan = k1.map((item: any) => ({
+          ...item,
+          dudi: item.tempat_magang,
+        }));
+      } else {
+        const { data: k2 } = await supabase
+          .from("kunjungan")
+          .select(`
+            id, tanggal, catatan, photo_url,
+            guru:guru_id ( nama ),
+            dudi:dudi_id ( nama_perusahaan )
+          `)
+          .order("tanggal", { ascending: false });
+        kunjungan = k2;
+      }
 
       return {
         siswa: (siswa && siswa.length > 0) ? siswa.map((s: any) => ({
@@ -282,8 +309,9 @@ export const adminService = {
         ];
       }
 
-      return data.map((g: Guru) => ({
+      return data.map((g: any) => ({
         ...g,
+        status: g.status || (g.is_active ? "aktif" : "nonaktif"),
         activeSiswa: 3,
       }));
     } catch {

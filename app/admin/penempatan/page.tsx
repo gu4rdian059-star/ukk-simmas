@@ -30,72 +30,91 @@ import {
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "sonner";
 import type { PenempatanMagang, PengajuanMagang } from "@/types/database";
+import {
+  fetchPenempatanListAction,
+  fetchPengajuanListAction,
+  createPenempatanAction,
+  approvePengajuanAction,
+  rejectPengajuanAction,
+  fetchSiswaListAction,
+  fetchDudiListAction,
+  fetchGuruListAction,
+} from "@/app/actions/crud";
 
 export default function AdminPenempatanPage() {
-  const [penempatanList, setPenempatanList] = React.useState<PenempatanMagang[]>([
-    {
-      id: "p1",
-      siswa_id: "s1",
-      dudi_id: "d1",
-      guru_id: "g1",
-      siswaName: "Siswa Magang",
-      nis: "21001",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Universal Big Data",
-      guruName: "Guru Pembimbing, S.Kom.",
-      tanggal_mulai: "2026-07-15",
-      tanggal_selesai: "2026-12-15",
-      status: "aktif",
-      nilai_akhir: null,
-    },
-    {
-      id: "p2",
-      siswa_id: "s2",
-      dudi_id: "d1",
-      guru_id: "g1",
-      siswaName: "Aditya Pratama",
-      nis: "21002",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Universal Big Data",
-      guruName: "Guru Pembimbing, S.Kom.",
-      tanggal_mulai: "2026-07-15",
-      tanggal_selesai: "2026-12-15",
-      status: "aktif",
-      nilai_akhir: null,
-    },
-    {
-      id: "p3",
-      siswa_id: "s3",
-      dudi_id: "d2",
-      guru_id: "g1",
-      siswaName: "Bella Safitri",
-      nis: "21003",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Telkom Indonesia",
-      guruName: "Guru Pembimbing, S.Kom.",
-      tanggal_mulai: "2026-07-15",
-      tanggal_selesai: "2026-12-15",
-      status: "aktif",
-      nilai_akhir: null,
-    },
-  ]);
+  const [penempatanList, setPenempatanList] = React.useState<PenempatanMagang[]>([]);
+  const [pengajuanList, setPengajuanList] = React.useState<PengajuanMagang[]>([]);
+  const [siswaOptions, setSiswaOptions] = React.useState<{ id: string; nama: string; nis: string; kelas: string }[]>([]);
+  const [dudiOptions, setDudiOptions] = React.useState<{ id: string; nama_perusahaan: string }[]>([]);
+  const [guruOptions, setGuruOptions] = React.useState<{ id: string; nama: string }[]>([]);
+  const [selectedGuruForApproval, setSelectedGuruForApproval] = React.useState("");
 
-  const [pengajuanList, setPengajuanList] = React.useState<PengajuanMagang[]>([
-    {
-      id: "q1",
-      siswa_id: "s8",
-      posisi: "Frontend Developer Intern",
-      tanggal_mulai: "2026-08-01",
-      tanggal_selesai: "2027-01-31",
-      status: "menunggu",
-      siswaName: "Gilang Ramadhan",
-      nis: "21008",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Solusi Digital Nusantara",
-      dudiAddress: "Jl. Manyar Kertoarjo No. 24",
-      tanggalPengajuan: "2026-11-10",
-    },
-  ]);
+  // Add Form state
+  const [formData, setFormData] = React.useState({
+    siswa_id: "",
+    dudi_id: "",
+    guru_id: "",
+    siswaName: "",
+    dudiName: "",
+    guruName: "",
+    tanggal_mulai: "2026-07-15",
+    tanggal_selesai: "2026-12-15",
+  });
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  React.useEffect(() => {
+    async function loadData() {
+      try {
+        const [penempatanRes, pengajuanRes, siswaRes, dudiRes, guruRes] = await Promise.all([
+          fetchPenempatanListAction(),
+          fetchPengajuanListAction(),
+          fetchSiswaListAction(),
+          fetchDudiListAction(),
+          fetchGuruListAction(),
+        ]);
+        if (penempatanRes.success && penempatanRes.data) {
+          setPenempatanList(penempatanRes.data as PenempatanMagang[]);
+        }
+        if (pengajuanRes.success && pengajuanRes.data) {
+          setPengajuanList(pengajuanRes.data as PengajuanMagang[]);
+        }
+        if (siswaRes.success && siswaRes.data) {
+          setSiswaOptions(siswaRes.data);
+          if (siswaRes.data.length > 0) {
+            setFormData((prev) => ({
+              ...prev,
+              siswa_id: prev.siswa_id || siswaRes.data[0].id,
+              siswaName: prev.siswaName || `${siswaRes.data[0].nama} (${siswaRes.data[0].nis})`,
+            }));
+          }
+        }
+        if (dudiRes.success && dudiRes.data) {
+          setDudiOptions(dudiRes.data);
+          if (dudiRes.data.length > 0) {
+            setFormData((prev) => ({
+              ...prev,
+              dudi_id: prev.dudi_id || dudiRes.data[0].id,
+              dudiName: prev.dudiName || dudiRes.data[0].nama_perusahaan,
+            }));
+          }
+        }
+        if (guruRes.success && guruRes.data) {
+          setGuruOptions(guruRes.data);
+          if (guruRes.data.length > 0) {
+            setSelectedGuruForApproval(guruRes.data[0].nama);
+            setFormData((prev) => ({
+              ...prev,
+              guru_id: prev.guru_id || guruRes.data[0].id,
+              guruName: prev.guruName || guruRes.data[0].nama,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load penempatan/pengajuan:", err);
+      }
+    }
+    loadData();
+  }, []);
 
   const [search, setSearch] = React.useState("");
   const [filterKelas, setFilterKelas] = React.useState("Semua");
@@ -106,31 +125,42 @@ export default function AdminPenempatanPage() {
   const [rejectModal, setRejectModal] = React.useState<PengajuanMagang | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
 
-  // Add Form state
-  const [formData, setFormData] = React.useState({
-    siswaName: "Chandra Wijaya (21004)",
-    dudiName: "PT. Universal Big Data",
-    guruName: "Guru Pembimbing, S.Kom.",
-    tanggal_mulai: "2026-07-15",
-    tanggal_selesai: "2026-12-15",
-  });
-  const [isSaving, setIsSaving] = React.useState(false);
-
   const handleCreatePenempatan = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.siswa_id || !formData.dudi_id || !formData.guru_id) {
+      toast.error("Mohon pilih siswa, mitra industri, dan guru pembimbing.");
+      return;
+    }
     setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 400));
+
+    const res = await createPenempatanAction({
+      siswa_id: formData.siswa_id,
+      dudi_id: formData.dudi_id,
+      guru_id: formData.guru_id,
+      tanggal_mulai: formData.tanggal_mulai,
+      tanggal_selesai: formData.tanggal_selesai,
+    });
+
+    if (!res.success) {
+      toast.error(`Gagal simpan penempatan: ${res.error}`);
+      setIsSaving(false);
+      return;
+    }
+
+    const selectedSiswa = siswaOptions.find((s) => s.id === formData.siswa_id);
+    const selectedDudi = dudiOptions.find((d) => d.id === formData.dudi_id);
+    const selectedGuru = guruOptions.find((g) => g.id === formData.guru_id);
 
     const newPenempatan: PenempatanMagang = {
       id: "p-" + Date.now(),
-      siswa_id: "s-new",
-      dudi_id: "d-new",
-      guru_id: "g-new",
-      siswaName: formData.siswaName.split(" (")[0],
-      nis: formData.siswaName.split("(")[1]?.replace(")", "") || "21004",
-      kelas: "XII RPL 2",
-      dudiName: formData.dudiName,
-      guruName: formData.guruName,
+      siswa_id: formData.siswa_id,
+      dudi_id: formData.dudi_id,
+      guru_id: formData.guru_id,
+      siswaName: selectedSiswa?.nama || formData.siswaName,
+      nis: selectedSiswa?.nis || "-",
+      kelas: selectedSiswa?.kelas || "-",
+      dudiName: selectedDudi?.nama_perusahaan || formData.dudiName,
+      guruName: selectedGuru?.nama || formData.guruName,
       tanggal_mulai: formData.tanggal_mulai,
       tanggal_selesai: formData.tanggal_selesai,
       status: "aktif",
@@ -139,19 +169,28 @@ export default function AdminPenempatanPage() {
     setPenempatanList((prev) => [newPenempatan, ...prev]);
     setIsSaving(false);
     setIsAddOpen(false);
-    toast.success("Penempatan magang berhasil diterbitkan.");
+    toast.success("Penempatan magang berhasil disimpan.");
   };
 
   const handleApprovePengajuan = async (guruName: string) => {
     if (!approvalModal) return;
     setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 400));
+
+    try {
+      await approvePengajuanAction(
+        approvalModal.id,
+        approvalModal.dudi_id || "",
+        guruName || ""
+      );
+    } catch (err) {
+      console.error(err);
+    }
 
     // Move to penempatan
     const newP: PenempatanMagang = {
       id: "p-" + Date.now(),
       siswa_id: approvalModal.siswa_id,
-      dudi_id: "d-app",
+      dudi_id: approvalModal.dudi_id || "d-app",
       guru_id: "g-app",
       siswaName: approvalModal.siswaName,
       nis: approvalModal.nis,
@@ -173,7 +212,12 @@ export default function AdminPenempatanPage() {
   const handleRejectPengajuan = async () => {
     if (!rejectModal) return;
     setIsSaving(true);
-    await new Promise((r) => setTimeout(r, 400));
+
+    try {
+      await rejectPengajuanAction(rejectModal.id, rejectReason || "Ditolak oleh admin.");
+    } catch (err) {
+      console.error(err);
+    }
 
     setPengajuanList((prev) => prev.filter((q) => q.id !== rejectModal.id));
     setIsSaving(false);
@@ -195,7 +239,7 @@ export default function AdminPenempatanPage() {
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -323,7 +367,17 @@ export default function AdminPenempatanPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {filtered.map((p) => (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    <p className="font-semibold text-sm text-foreground">Belum ada penempatan magang</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Klik &quot;Tambah Penempatan&quot; di atas untuk menempatkan siswa ke industri DUDI.
+                    </p>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((p) => (
                 <tr key={p.id} className="hover:bg-muted/20 transition-colors">
                   <td className="p-4 font-bold text-foreground">
                     {p.siswaName}
@@ -346,7 +400,7 @@ export default function AdminPenempatanPage() {
                     </Badge>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>
@@ -368,12 +422,25 @@ export default function AdminPenempatanPage() {
                 <Label htmlFor="siswa">Pilih Siswa</Label>
                 <select
                   id="siswa"
-                  value={formData.siswaName}
-                  onChange={(e) => setFormData({ ...formData, siswaName: e.target.value })}
+                  value={formData.siswa_id}
+                  onChange={(e) => {
+                    const sid = e.target.value;
+                    const sObj = siswaOptions.find((s) => s.id === sid);
+                    setFormData({
+                      ...formData,
+                      siswa_id: sid,
+                      siswaName: sObj ? `${sObj.nama} (${sObj.nis})` : "",
+                    });
+                  }}
                   className="h-11 w-full rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground focus-visible:outline-primary"
+                  required
                 >
-                  <option value="Chandra Wijaya (21004)">Chandra Wijaya - XII RPL 2 (21004)</option>
-                  <option value="Dewi Lestari (21005)">Dewi Lestari - XII RPL 2 (21005)</option>
+                  <option value="" disabled>-- Pilih Siswa --</option>
+                  {siswaOptions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nama} - {s.kelas} ({s.nis})
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -381,13 +448,25 @@ export default function AdminPenempatanPage() {
                 <Label htmlFor="dudi">Pilih Tempat Magang (DUDI)</Label>
                 <select
                   id="dudi"
-                  value={formData.dudiName}
-                  onChange={(e) => setFormData({ ...formData, dudiName: e.target.value })}
+                  value={formData.dudi_id}
+                  onChange={(e) => {
+                    const did = e.target.value;
+                    const dObj = dudiOptions.find((d) => d.id === did);
+                    setFormData({
+                      ...formData,
+                      dudi_id: did,
+                      dudiName: dObj ? dObj.nama_perusahaan : "",
+                    });
+                  }}
                   className="h-11 w-full rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground focus-visible:outline-primary"
+                  required
                 >
-                  <option value="PT. Universal Big Data">PT. Universal Big Data</option>
-                  <option value="PT. Telkom Indonesia">PT. Telkom Indonesia</option>
-                  <option value="PT. CEO Batu Giok Shangsai">PT. CEO Batu Giok Shangsai</option>
+                  <option value="" disabled>-- Pilih Tempat Magang --</option>
+                  {dudiOptions.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.nama_perusahaan}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -395,12 +474,25 @@ export default function AdminPenempatanPage() {
                 <Label htmlFor="guru">Pilih Guru Pembimbing</Label>
                 <select
                   id="guru"
-                  value={formData.guruName}
-                  onChange={(e) => setFormData({ ...formData, guruName: e.target.value })}
+                  value={formData.guru_id}
+                  onChange={(e) => {
+                    const gid = e.target.value;
+                    const gObj = guruOptions.find((g) => g.id === gid);
+                    setFormData({
+                      ...formData,
+                      guru_id: gid,
+                      guruName: gObj ? gObj.nama : "",
+                    });
+                  }}
                   className="h-11 w-full rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground focus-visible:outline-primary"
+                  required
                 >
-                  <option value="Guru Pembimbing, S.Kom.">Guru Pembimbing, S.Kom.</option>
-                  <option value="Dra. Endang Wahyuni, M.Pd.">Dra. Endang Wahyuni, M.Pd.</option>
+                  <option value="" disabled>-- Pilih Guru Pembimbing --</option>
+                  {guruOptions.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.nama}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -471,11 +563,19 @@ export default function AdminPenempatanPage() {
                 <Label htmlFor="assignGuru">Tugaskan Guru Pembimbing</Label>
                 <select
                   id="assignGuru"
-                  defaultValue="Guru Pembimbing, S.Kom."
+                  value={selectedGuruForApproval}
+                  onChange={(e) => setSelectedGuruForApproval(e.target.value)}
                   className="h-11 w-full rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground focus-visible:outline-primary"
                 >
-                  <option value="Guru Pembimbing, S.Kom.">Guru Pembimbing, S.Kom.</option>
-                  <option value="Dra. Endang Wahyuni, M.Pd.">Dra. Endang Wahyuni, M.Pd.</option>
+                  {guruOptions.length > 0 ? (
+                    guruOptions.map((g) => (
+                      <option key={g.id} value={g.nama}>
+                        {g.nama}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="Guru Pembimbing, S.Kom.">Guru Pembimbing, S.Kom.</option>
+                  )}
                 </select>
               </div>
             </div>
@@ -492,7 +592,7 @@ export default function AdminPenempatanPage() {
               <Button
                 size="sm"
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
-                onClick={() => handleApprovePengajuan("Guru Pembimbing, S.Kom.")}
+                onClick={() => handleApprovePengajuan(selectedGuruForApproval || guruOptions[0]?.nama || "Guru Pembimbing, S.Kom.")}
                 disabled={isSaving}
               >
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

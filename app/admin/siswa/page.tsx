@@ -32,6 +32,15 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { toast } from "sonner";
+import {
+  createSiswaAction,
+  updateSiswaAction,
+  deleteSiswaAction,
+  fetchSiswaListAction,
+  fetchDudiListAction,
+  fetchGuruListAction,
+  plottingSiswaAction,
+} from "@/app/actions/crud";
 
 interface SiswaItem {
   id: string;
@@ -47,92 +56,8 @@ interface SiswaItem {
 }
 
 export default function AdminSiswaPage() {
-  const [siswaList, setSiswaList] = React.useState<SiswaItem[]>([
-    {
-      id: "1",
-      nis: "23123123",
-      nama: "hihuahmad",
-      email: "hihuahmad@simmas.sch.id",
-      avatar: "H",
-      kelas: "XII RPL 1",
-      status_magang: "magang",
-      status_label: "Sedang Magang",
-      industri: "fhjk",
-      guru_pembimbing: "guruhuhu",
-    },
-    {
-      id: "2",
-      nis: "45678",
-      nama: "penceng siswa",
-      email: "penceng.siswa@simmas.sch.id",
-      avatar: "PS",
-      kelas: "XII RPL 1",
-      status_magang: "magang",
-      status_label: "Sedang Magang",
-      industri: "PT CEO Batu Giok",
-      guru_pembimbing: "guruhuhu",
-    },
-    {
-      id: "3",
-      nis: "1678",
-      nama: "bagas mahen",
-      email: "bagas.mahen.4678@simmas.sch.id",
-      avatar: "BM",
-      kelas: "hgvgbhmvgj",
-      status_magang: "magang",
-      status_label: "Sedang Magang",
-      industri: "PT CEO Batu Giok",
-      guru_pembimbing: "-",
-    },
-    {
-      id: "4",
-      nis: "425364767534231",
-      nama: "bagas mahen",
-      email: "bagas.mahen@simmas.sch.id",
-      avatar: "BM",
-      kelas: "XII RPL 4",
-      status_magang: "lulus",
-      status_label: "Lulus",
-      industri: "PT kikuk",
-      guru_pembimbing: "Guru Test",
-    },
-    {
-      id: "5",
-      nis: "21001",
-      nama: "Siswa Magang",
-      email: "siswa@simmas.sch.id",
-      avatar: "SM",
-      kelas: "XII RPL 1",
-      status_magang: "magang",
-      status_label: "Sedang Magang",
-      industri: "PT. Universal Big Data",
-      guru_pembimbing: "Guru Pembimbing, S.Kom.",
-    },
-    {
-      id: "6",
-      nis: "21008",
-      nama: "Gilang Ramadhan",
-      email: "gilang.ramadhan@simmas.sch.id",
-      avatar: "GR",
-      kelas: "XII RPL 2",
-      status_magang: "menunggu",
-      status_label: "Belum Magang",
-      industri: "-",
-      guru_pembimbing: "-",
-    },
-    {
-      id: "7",
-      nis: "21009",
-      nama: "Hana Maharani",
-      email: "hana.maharani@simmas.sch.id",
-      avatar: "HM",
-      kelas: "XII RPL 2",
-      status_magang: "belum_mengajukan",
-      status_label: "Belum Magang",
-      industri: "-",
-      guru_pembimbing: "-",
-    },
-  ]);
+  const [siswaList, setSiswaList] = React.useState<SiswaItem[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   const [search, setSearch] = React.useState("");
   const [filterKelas, setFilterKelas] = React.useState("Semua");
@@ -166,6 +91,72 @@ export default function AdminSiswaPage() {
   });
 
   const [statusValue, setStatusValue] = React.useState<SiswaItem["status_magang"]>("magang");
+  const [dudiList, setDudiList] = React.useState<{ id: string; nama_perusahaan: string }[]>([]);
+  const [guruOptions, setGuruOptions] = React.useState<{ id: string; nama: string }[]>([]);
+
+  // Fetch live from Supabase on mount
+  React.useEffect(() => {
+    async function loadLiveData() {
+      setIsLoading(true);
+      try {
+        const [siswaRes, dudiRes, guruRes] = await Promise.all([
+          fetchSiswaListAction(),
+          fetchDudiListAction(),
+          fetchGuruListAction(),
+        ]);
+
+        if (siswaRes.success && siswaRes.data) {
+          const mapped: SiswaItem[] = siswaRes.data.map((item: any) => {
+            const initials = (item.nama || "S")
+              .split(" ")
+              .map((n: string) => n[0])
+              .join("")
+              .substring(0, 2)
+              .toUpperCase();
+            const isMagang = item.status_magang === "sedang_magang" || item.status_magang === "magang";
+            const isLulus = item.status_magang === "lulus" || item.status_magang === "selesai";
+            const isMenunggu = item.status_magang === "pengajuan" || item.status_magang === "menunggu";
+            const statusLabel = isMagang
+              ? "Sedang Magang"
+              : isLulus
+                ? "Lulus"
+                : isMenunggu
+                  ? "Menunggu"
+                  : "Belum Magang";
+
+            return {
+              id: item.id,
+              nis: item.nis,
+              nama: item.nama,
+              email: item.email,
+              avatar: initials,
+              kelas: item.kelas,
+              status_magang: isMagang ? "magang" : isLulus ? "lulus" : isMenunggu ? "menunggu" : "belum_mengajukan",
+              status_label: statusLabel,
+              industri: item.dudi?.nama_perusahaan || "-",
+              guru_pembimbing: item.guru?.nama || "-",
+            };
+          });
+          setSiswaList(mapped);
+        }
+
+        if (dudiRes.success && dudiRes.data && dudiRes.data.length > 0) {
+          setDudiList(dudiRes.data);
+          setPlotData((prev) => ({ ...prev, industri: dudiRes.data[0].nama_perusahaan }));
+        }
+
+        if (guruRes.success && guruRes.data && guruRes.data.length > 0) {
+          setGuruOptions(guruRes.data);
+          setPlotData((prev) => ({ ...prev, guru_pembimbing: guruRes.data[0].nama }));
+        }
+      } catch (err) {
+        console.error("Failed to load siswa from Supabase:", err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadLiveData();
+  }, []);
 
   // Close popup menu when clicking outside
   React.useEffect(() => {
@@ -193,11 +184,11 @@ export default function AdminSiswaPage() {
     return matchSearch && matchKelas && matchIndustri && matchStatus;
   });
 
-  // Calculate dynamic stats matching screenshot (33, 7, 2, 1)
-  const totalCount = 33;
-  const magangCount = 7;
-  const belumCount = 2;
-  const lulusCount = 1;
+  // Dynamic stats calculated from real Supabase data
+  const totalCount = siswaList.length;
+  const magangCount = siswaList.filter((s) => s.status_magang === "magang").length;
+  const belumCount = siswaList.filter((s) => s.status_magang === "belum_mengajukan" || s.status_magang === "menunggu").length;
+  const lulusCount = siswaList.filter((s) => s.status_magang === "lulus").length;
 
   // Handlers
   const handleOpenAdd = () => {
@@ -241,7 +232,7 @@ export default function AdminSiswaPage() {
     setIsStatusOpen(true);
   };
 
-  const handleSaveForm = (e: React.FormEvent) => {
+  const handleSaveForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nis || !formData.nama || !formData.email) {
       toast.error("Mohon lengkapi NIS, Nama, dan Email.");
@@ -249,23 +240,49 @@ export default function AdminSiswaPage() {
     }
 
     if (editingSiswa) {
+      const res = await updateSiswaAction(editingSiswa.id, {
+        nis: formData.nis,
+        nama: formData.nama,
+        email: formData.email,
+        kelas: formData.kelas,
+        status_magang: editingSiswa.status_magang === "lulus" ? "selesai" : editingSiswa.status_magang,
+      });
+
+      if (!res.success) {
+        toast.error(`Gagal memperbarui data siswa: ${res.error}`);
+      } else {
+        toast.success("Data siswa berhasil diperbarui.");
+      }
+
       setSiswaList((prev) =>
         prev.map((s) =>
           s.id === editingSiswa.id
             ? {
-                ...s,
-                nis: formData.nis,
-                nama: formData.nama,
-                email: formData.email,
-                kelas: formData.kelas,
-                industri: formData.industri || s.industri,
-                guru_pembimbing: formData.guru_pembimbing || s.guru_pembimbing,
-              }
+              ...s,
+              nis: formData.nis,
+              nama: formData.nama,
+              email: formData.email,
+              kelas: formData.kelas,
+              industri: formData.industri || s.industri,
+              guru_pembimbing: formData.guru_pembimbing || s.guru_pembimbing,
+            }
             : s
         )
       );
-      toast.success("Data siswa berhasil diperbarui.");
     } else {
+      const res = await createSiswaAction({
+        nis: formData.nis,
+        nama: formData.nama,
+        email: formData.email,
+        kelas: formData.kelas,
+      });
+
+      if (!res.success) {
+        toast.error(`Gagal menyimpan data siswa: ${res.error}`);
+      } else {
+        toast.success("Siswa baru berhasil ditambahkan!");
+      }
+
       const initials = formData.nama
         .split(" ")
         .map((n) => n[0])
@@ -273,7 +290,7 @@ export default function AdminSiswaPage() {
         .substring(0, 2)
         .toUpperCase();
       const newSiswa: SiswaItem = {
-        id: Date.now().toString(),
+        id: res.data?.id || Date.now().toString(),
         nis: formData.nis,
         nama: formData.nama,
         email: formData.email,
@@ -285,25 +302,36 @@ export default function AdminSiswaPage() {
         guru_pembimbing: formData.guru_pembimbing || "-",
       };
       setSiswaList((prev) => [newSiswa, ...prev]);
-      toast.success("Siswa baru berhasil ditambahkan.");
     }
 
     setIsModalOpen(false);
   };
 
-  const handleSavePlot = (e: React.FormEvent) => {
+  const handleSavePlot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSiswa) return;
+
+    const matchedDudi = dudiList.find((d) => d.nama_perusahaan === plotData.industri);
+    const matchedGuru = guruOptions.find((g) => g.nama === plotData.guru_pembimbing);
+
+    if (matchedDudi && matchedGuru) {
+      const res = await plottingSiswaAction(selectedSiswa.id, matchedGuru.id, matchedDudi.id);
+      if (!res.success) {
+        toast.error(`Gagal menyimpan plotting: ${res.error}`);
+        return;
+      }
+    }
+
     setSiswaList((prev) =>
       prev.map((s) =>
         s.id === selectedSiswa.id
           ? {
-              ...s,
-              industri: plotData.industri,
-              guru_pembimbing: plotData.guru_pembimbing,
-              status_magang: "magang",
-              status_label: "Sedang Magang",
-            }
+            ...s,
+            industri: plotData.industri,
+            guru_pembimbing: plotData.guru_pembimbing,
+            status_magang: "magang",
+            status_label: "Sedang Magang",
+          }
           : s
       )
     );
@@ -311,40 +339,58 @@ export default function AdminSiswaPage() {
     setIsPlottingOpen(false);
   };
 
-  const handleSaveStatus = (e: React.FormEvent) => {
+  const handleSaveStatus = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSiswa) return;
     const label =
       statusValue === "magang"
         ? "Sedang Magang"
         : statusValue === "lulus"
-        ? "Lulus"
-        : "Belum Magang";
+          ? "Lulus"
+          : "Belum Magang";
+
+    const res = await updateSiswaAction(selectedSiswa.id, {
+      nis: selectedSiswa.nis,
+      nama: selectedSiswa.nama,
+      email: selectedSiswa.email,
+      kelas: selectedSiswa.kelas,
+      status_magang: statusValue,
+    });
+
+    if (!res.success) {
+      toast.error(`Gagal mengubah status: ${res.error}`);
+      return;
+    }
 
     setSiswaList((prev) =>
       prev.map((s) =>
         s.id === selectedSiswa.id
           ? {
-              ...s,
-              status_magang: statusValue,
-              status_label: label,
-            }
+            ...s,
+            status_magang: statusValue,
+            status_label: label,
+          }
           : s
       )
     );
-    toast.success("Status magang berhasil diubah.");
+    toast.success("Status magang berhasil diperbarui.");
     setIsStatusOpen(false);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deletingId) return;
+    const res = await deleteSiswaAction(deletingId);
+    if (!res.success) {
+      toast.error(`Gagal menghapus data: ${res.error}`);
+    } else {
+      toast.success("Data siswa berhasil dihapus.");
+    }
     setSiswaList((prev) => prev.filter((s) => s.id !== deletingId));
-    toast.success("Data siswa berhasil dihapus.");
     setDeletingId(null);
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto font-sans">
+    <div className="space-y-6 w-full font-sans">
       {/* 1. TOP STAT CARDS (4 Cards Row) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: TOTAL SISWA */}
@@ -499,139 +545,154 @@ export default function AdminSiswaPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {filtered.map((siswa) => (
-                <tr key={siswa.id} className="hover:bg-muted/20 transition-colors">
-                  {/* NIS */}
-                  <td className="py-4 px-4 font-mono font-medium text-foreground whitespace-nowrap">
-                    {siswa.nis}
-                  </td>
-
-                  {/* NAMA LENGKAP */}
-                  <td className="py-4 px-4 whitespace-nowrap">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold text-xs">
-                        {siswa.avatar}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-16 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground mb-3">
+                        <Users className="h-6 w-6" />
                       </div>
-                      <div>
-                        <p className="font-bold text-foreground text-xs leading-tight">
-                          {siswa.nama}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
-                          {siswa.email}
-                        </p>
-                      </div>
+                      <p className="font-bold text-sm text-foreground">Belum ada data siswa</p>
+                      <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                        Tabel siswa di database Supabase saat ini masih kosong. Klik tombol &quot;+ Tambah Siswa&quot; di atas untuk menambahkan siswa baru.
+                      </p>
                     </div>
                   </td>
-
-                  {/* KELAS */}
-                  <td className="py-4 px-4 font-medium text-foreground whitespace-nowrap">
-                    {siswa.kelas}
-                  </td>
-
-                  {/* STATUS MAGANG */}
-                  <td className="py-4 px-4 whitespace-nowrap">
-                    {siswa.status_magang === "magang" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
-                        <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
-                        Sedang Magang
-                      </span>
-                    ) : siswa.status_magang === "lulus" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
-                        Lulus
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/60">
-                        <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
-                        Belum Magang
-                      </span>
-                    )}
-                  </td>
-
-                  {/* INDUSTRI */}
-                  <td className="py-4 px-4 font-medium text-foreground whitespace-nowrap">
-                    {siswa.industri}
-                  </td>
-
-                  {/* GURU PEMBIMBING */}
-                  <td className="py-4 px-4 font-medium text-foreground whitespace-nowrap">
-                    {siswa.guru_pembimbing}
-                  </td>
-
-                  {/* AKSI DROPDOWN MENU */}
-                  <td className="py-4 px-4 text-right whitespace-nowrap relative">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(activeMenuId === siswa.id ? null : siswa.id);
-                      }}
-                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label="Aksi"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
-
-                    {/* Popup menu matching screenshot */}
-                    {activeMenuId === siswa.id && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute right-4 top-12 z-50 w-48 rounded-2xl border border-border bg-white p-1.5 shadow-xl text-left animate-in fade-in zoom-in-95 duration-100"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMenuId(null);
-                            handleOpenEdit(siswa);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                        >
-                          <SquarePen className="h-4 w-4 text-muted-foreground" />
-                          <span>Edit Data</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMenuId(null);
-                            handleOpenPlot(siswa);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                        >
-                          <UserPlus className="h-4 w-4 text-muted-foreground" />
-                          <span>Plot Pembimbing</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMenuId(null);
-                            handleOpenStatus(siswa);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                        >
-                          <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                          <span>Ubah Status Magang</span>
-                        </button>
-
-                        <div className="border-t border-border/60 my-1" />
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMenuId(null);
-                            setDeletingId(siswa.id);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 rounded-xl hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                          <span>Hapus</span>
-                        </button>
-                      </div>
-                    )}
-                  </td>
                 </tr>
-              ))}
+              ) : (
+                filtered.map((siswa) => (
+                  <tr key={siswa.id} className="hover:bg-muted/20 transition-colors">
+                    {/* NIS */}
+                    <td className="py-4 px-4 font-mono font-medium text-foreground whitespace-nowrap">
+                      {siswa.nis}
+                    </td>
+
+                    {/* NAMA LENGKAP */}
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold text-xs">
+                          {siswa.avatar}
+                        </div>
+                        <div>
+                          <p className="font-bold text-foreground text-xs leading-tight">
+                            {siswa.nama}
+                          </p>
+                          <p className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                            {siswa.email}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* KELAS */}
+                    <td className="py-4 px-4 font-medium text-foreground whitespace-nowrap">
+                      {siswa.kelas}
+                    </td>
+
+                    {/* STATUS MAGANG */}
+                    <td className="py-4 px-4 whitespace-nowrap">
+                      {siswa.status_magang === "magang" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200/60">
+                          <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
+                          Sedang Magang
+                        </span>
+                      ) : siswa.status_magang === "lulus" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                          Lulus
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/60">
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />
+                          Belum Magang
+                        </span>
+                      )}
+                    </td>
+
+                    {/* INDUSTRI */}
+                    <td className="py-4 px-4 font-medium text-foreground whitespace-nowrap">
+                      {siswa.industri}
+                    </td>
+
+                    {/* GURU PEMBIMBING */}
+                    <td className="py-4 px-4 font-medium text-foreground whitespace-nowrap">
+                      {siswa.guru_pembimbing}
+                    </td>
+
+                    {/* AKSI DROPDOWN MENU */}
+                    <td className="py-4 px-4 text-right whitespace-nowrap relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuId(activeMenuId === siswa.id ? null : siswa.id);
+                        }}
+                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label="Aksi"
+                      >
+                        <MoreHorizontal className="h-4 w-4" />
+                      </button>
+
+                      {/* Popup menu matching screenshot */}
+                      {activeMenuId === siswa.id && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute right-4 top-12 z-50 w-48 rounded-2xl border border-border bg-white p-1.5 shadow-xl text-left animate-in fade-in zoom-in-95 duration-100"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              handleOpenEdit(siswa);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
+                          >
+                            <SquarePen className="h-4 w-4 text-muted-foreground" />
+                            <span>Edit Data</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              handleOpenPlot(siswa);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
+                          >
+                            <UserPlus className="h-4 w-4 text-muted-foreground" />
+                            <span>Plot Pembimbing</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              handleOpenStatus(siswa);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
+                          >
+                            <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                            <span>Ubah Status Magang</span>
+                          </button>
+
+                          <div className="border-t border-border/60 my-1" />
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuId(null);
+                              setDeletingId(siswa.id);
+                            }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 rounded-xl hover:bg-red-50 transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                            <span>Hapus</span>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )))}
             </tbody>
           </table>
         </div>
@@ -727,11 +788,19 @@ export default function AdminSiswaPage() {
                 onChange={(e) => setPlotData({ ...plotData, industri: e.target.value })}
                 className="w-full h-9 rounded-xl border border-border bg-background px-3 text-xs font-medium focus:outline-primary"
               >
-                <option value="PT. Universal Big Data">PT. Universal Big Data</option>
-                <option value="PT. Telkom Indonesia">PT. Telkom Indonesia</option>
-                <option value="PT CEO Batu Giok">PT CEO Batu Giok</option>
-                <option value="PT. Solusi Digital Nusantara">PT. Solusi Digital Nusantara</option>
-                <option value="CV. Media Grafika Kreatif">CV. Media Grafika Kreatif</option>
+                {dudiList.length > 0 ? (
+                  dudiList.map((d) => (
+                    <option key={d.id} value={d.nama_perusahaan}>
+                      {d.nama_perusahaan}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="PT. Universal Big Data">PT. Universal Big Data</option>
+                    <option value="PT. Telkom Indonesia">PT. Telkom Indonesia</option>
+                    <option value="PT. Suka">PT. Suka</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="space-y-1.5">
@@ -741,9 +810,18 @@ export default function AdminSiswaPage() {
                 onChange={(e) => setPlotData({ ...plotData, guru_pembimbing: e.target.value })}
                 className="w-full h-9 rounded-xl border border-border bg-background px-3 text-xs font-medium focus:outline-primary"
               >
-                <option value="Guru Pembimbing, S.Kom.">Guru Pembimbing, S.Kom.</option>
-                <option value="Dra. Endang Wahyuni, M.Pd.">Dra. Endang Wahyuni, M.Pd.</option>
-                <option value="Rian Pratama, S.Kom., M.Cs.">Rian Pratama, S.Kom., M.Cs.</option>
+                {guruOptions.length > 0 ? (
+                  guruOptions.map((g) => (
+                    <option key={g.id} value={g.nama}>
+                      {g.nama}
+                    </option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Guru Pembimbing, S.Kom.">Guru Pembimbing, S.Kom.</option>
+                    <option value="Antigravity Andro">Antigravity Andro</option>
+                  </>
+                )}
               </select>
             </div>
             <DialogFooter className="pt-2">
@@ -777,9 +855,8 @@ export default function AdminSiswaPage() {
             </p>
             <div className="space-y-2">
               <label
-                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${
-                  statusValue === "magang" ? "border-blue-600 bg-blue-50/50" : "border-border hover:bg-muted/40"
-                }`}
+                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${statusValue === "magang" ? "border-blue-600 bg-blue-50/50" : "border-border hover:bg-muted/40"
+                  }`}
                 onClick={() => setStatusValue("magang")}
               >
                 <span className="text-xs font-semibold text-foreground">Sedang Magang</span>
@@ -787,9 +864,8 @@ export default function AdminSiswaPage() {
               </label>
 
               <label
-                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${
-                  statusValue === "lulus" ? "border-emerald-600 bg-emerald-50/50" : "border-border hover:bg-muted/40"
-                }`}
+                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${statusValue === "lulus" ? "border-emerald-600 bg-emerald-50/50" : "border-border hover:bg-muted/40"
+                  }`}
                 onClick={() => setStatusValue("lulus")}
               >
                 <span className="text-xs font-semibold text-foreground">Lulus Magang</span>
@@ -797,9 +873,8 @@ export default function AdminSiswaPage() {
               </label>
 
               <label
-                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${
-                  statusValue === "belum_mengajukan" ? "border-amber-600 bg-amber-50/50" : "border-border hover:bg-muted/40"
-                }`}
+                className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-colors ${statusValue === "belum_mengajukan" ? "border-amber-600 bg-amber-50/50" : "border-border hover:bg-muted/40"
+                  }`}
                 onClick={() => setStatusValue("belum_mengajukan")}
               >
                 <span className="text-xs font-semibold text-foreground">Belum Magang</span>

@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { fetchSiswaListAction } from "@/app/actions/crud";
 
 export default function AdminMonitoringPage() {
   const [activeTab, setActiveTab] = React.useState("siswa");
@@ -34,69 +35,32 @@ export default function AdminMonitoringPage() {
   const [selectedStatus, setSelectedStatus] = React.useState("Semua");
   const [selectedSiswaDetail, setSelectedSiswaDetail] = React.useState<any | null>(null);
 
-  // Mock / dynamic data
-  const students = [
-    {
-      id: "s1",
-      nama: "Siswa Magang",
-      nis: "21001",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Universal Big Data",
-      guruName: "Guru Pembimbing, S.Kom.",
-      hadir: 20,
-      sakit: 0,
-      izin: 1,
-      alfa: 0,
-      jumlahJurnal: 18,
-      status: "Aktif",
-      terakhirAktif: "Hari ini, 07:30",
-    },
-    {
-      id: "s2",
-      nama: "Aditya Pratama",
-      nis: "21002",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Universal Big Data",
-      guruName: "Guru Pembimbing, S.Kom.",
-      hadir: 19,
-      sakit: 1,
-      izin: 0,
-      alfa: 0,
-      jumlahJurnal: 17,
-      status: "Aktif",
-      terakhirAktif: "Hari ini, 07:28",
-    },
-    {
-      id: "s3",
-      nama: "Bella Safitri",
-      nis: "21003",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Telkom Indonesia",
-      guruName: "Guru Pembimbing, S.Kom.",
-      hadir: 21,
-      sakit: 0,
-      izin: 0,
-      alfa: 0,
-      jumlahJurnal: 20,
-      status: "Aktif",
-      terakhirAktif: "Kemarin, 16:00",
-    },
-    {
-      id: "s4",
-      nama: "Gilang Ramadhan",
-      nis: "21008",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Solusi Digital Nusantara",
-      guruName: "-",
-      hadir: 0,
-      sakit: 0,
-      izin: 0,
-      alfa: 0,
-      jumlahJurnal: 0,
-      status: "Menunggu",
-      terakhirAktif: "-",
-    },
-  ];
+  const [students, setStudents] = React.useState<any[]>([]);
+
+  React.useEffect(() => {
+    async function loadData() {
+      const res = await fetchSiswaListAction();
+      if (res.success && res.data) {
+        const mapped = res.data.map((s: any) => ({
+          id: s.id,
+          nama: s.nama,
+          nis: s.nis,
+          kelas: s.kelas,
+          dudiName: s.dudi?.nama_perusahaan || "-",
+          guruName: s.guru?.nama || "-",
+          hadir: 0,
+          sakit: 0,
+          izin: 0,
+          alfa: 0,
+          jumlahJurnal: 0,
+          status: s.status_magang === "sedang_magang" ? "Aktif" : s.status_magang === "lulus" ? "Lulus" : "Menunggu",
+          terakhirAktif: "Hari ini",
+        }));
+        setStudents(mapped);
+      }
+    }
+    loadData();
+  }, []);
 
   const kunjunganList = [
     {
@@ -127,7 +91,7 @@ export default function AdminMonitoringPage() {
   });
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* 1. HEADER & OVERVIEW STATS */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">
@@ -140,10 +104,10 @@ export default function AdminMonitoringPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Total Siswa Aktif", val: "20 Siswa", color: "text-blue-600" },
-          { label: "Tingkat Kehadiran", val: "97%", color: "text-emerald-600" },
-          { label: "Jurnal Minggu Ini", val: "34 Diserahkan", color: "text-indigo-600" },
-          { label: "Perlu Perhatian", val: "2 Siswa", color: "text-amber-600" },
+          { label: "Total Siswa Aktif", val: `${students.filter((s) => s.status === "Aktif").length} Siswa`, color: "text-blue-600" },
+          { label: "Tingkat Kehadiran", val: "100%", color: "text-emerald-600" },
+          { label: "Jurnal Minggu Ini", val: "0 Diserahkan", color: "text-indigo-600" },
+          { label: "Perlu Perhatian", val: "0 Siswa", color: "text-amber-600" },
         ].map((item) => (
           <div
             key={item.label}
