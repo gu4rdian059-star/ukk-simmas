@@ -24,54 +24,37 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { submitNilaiAction } from "@/app/actions/crud";
+import {
+  submitNilaiAction,
+  fetchGuruSiswaBimbinganAction,
+} from "@/app/actions/crud";
 import { toast } from "sonner";
 
 export default function GuruSiswaPage() {
-  const [siswaList, setSiswaList] = React.useState([
-    {
-      id: "10000000-0000-0000-0000-000000000001",
-      penempatanId: "p1",
-      nis: "21001",
-      nama: "Siswa Magang",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Universal Big Data",
-      dudiAddress: "Jl. Tasikmadu No. 88, Malang",
-      status: "magang",
-      nilaiAkhir: 92,
-      catatanNilai: "Performa sangat baik dan inisiatif tinggi dalam pengembangan proyek.",
-    },
-    {
-      id: "10000000-0000-0000-0000-000000000002",
-      penempatanId: "p2",
-      nis: "21002",
-      nama: "Aditya Pratama",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Universal Big Data",
-      dudiAddress: "Jl. Tasikmadu No. 88, Malang",
-      status: "magang",
-      nilaiAkhir: null as number | null,
-      catatanNilai: null as string | null,
-    },
-    {
-      id: "10000000-0000-0000-0000-000000000003",
-      penempatanId: "p3",
-      nis: "21003",
-      nama: "Bella Safitri",
-      kelas: "XII RPL 1",
-      dudiName: "PT. Telkom Indonesia",
-      dudiAddress: "Jl. Ketintang No. 15, Surabaya",
-      status: "magang",
-      nilaiAkhir: 88,
-      catatanNilai: "Kehadiran disiplin dan tugas diselesaikan tepat waktu.",
-    },
-  ]);
-
+  const [siswaList, setSiswaList] = React.useState<any[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [search, setSearch] = React.useState("");
   const [gradingStudent, setGradingStudent] = React.useState<any | null>(null);
   const [scoreInput, setScoreInput] = React.useState(85);
   const [notesInput, setNotesInput] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
+
+  const loadData = React.useCallback(async () => {
+    try {
+      const res = await fetchGuruSiswaBimbinganAction();
+      if (res.success && res.data) {
+        setSiswaList(res.data);
+      }
+    } catch (err) {
+      console.error("Gagal memuat siswa bimbingan:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleOpenGrading = (s: any) => {
     setGradingStudent(s);
@@ -87,20 +70,23 @@ export default function GuruSiswaPage() {
       return;
     }
 
+    if (!gradingStudent.penempatanId) {
+      toast.error("Siswa ini belum memiliki penempatan magang aktif.");
+      return;
+    }
+
     setIsSaving(true);
-    await submitNilaiAction(gradingStudent.penempatanId, scoreInput, notesInput);
+    const res = await submitNilaiAction(gradingStudent.penempatanId, scoreInput, notesInput);
+    if (!res.success) {
+      toast.error(res.error || "Gagal menyimpan nilai.");
+      setIsSaving(false);
+      return;
+    }
 
-    setSiswaList((prev) =>
-      prev.map((item) =>
-        item.id === gradingStudent.id
-          ? { ...item, nilaiAkhir: scoreInput, catatanNilai: notesInput }
-          : item
-      )
-    );
-
+    toast.success("Nilai akhir dan evaluasi berhasil disimpan.");
     setIsSaving(false);
     setGradingStudent(null);
-    toast.success("Nilai akhir dan evaluasi berhasil disimpan.");
+    await loadData();
   };
 
   const filtered = siswaList.filter(

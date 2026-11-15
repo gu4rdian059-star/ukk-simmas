@@ -23,6 +23,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ActionDropdown } from "@/components/shared/action-dropdown";
 import {
   Dialog,
   DialogContent,
@@ -63,9 +64,6 @@ export default function AdminSiswaPage() {
   const [filterKelas, setFilterKelas] = React.useState("Semua");
   const [filterIndustri, setFilterIndustri] = React.useState("Semua");
   const [filterStatus, setFilterStatus] = React.useState("Semua");
-
-  // Active action menu row ID
-  const [activeMenuId, setActiveMenuId] = React.useState<string | null>(null);
 
   // Dialog states
   const [isModalOpen, setIsModalOpen] = React.useState(false);
@@ -157,15 +155,6 @@ export default function AdminSiswaPage() {
     }
     loadLiveData();
   }, []);
-
-  // Close popup menu when clicking outside
-  React.useEffect(() => {
-    const handleClickOutside = () => setActiveMenuId(null);
-    if (activeMenuId) {
-      document.addEventListener("click", handleClickOutside);
-    }
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, [activeMenuId]);
 
   // Filtered rows
   const filtered = siswaList.filter((s) => {
@@ -530,8 +519,8 @@ export default function AdminSiswaPage() {
       </div>
 
       {/* 3. DATA TABLE CARD */}
-      <div className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-visible">
-        <div className="overflow-x-auto overflow-y-visible">
+      <div className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-muted/40 border-b border-border/80">
               <tr className="text-muted-foreground font-bold">
@@ -620,76 +609,33 @@ export default function AdminSiswaPage() {
                     </td>
 
                     {/* AKSI DROPDOWN MENU */}
-                    <td className="py-4 px-4 text-right whitespace-nowrap relative">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(activeMenuId === siswa.id ? null : siswa.id);
-                        }}
-                        className="h-8 w-8 inline-flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Aksi"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-
-                      {/* Popup menu matching screenshot */}
-                      {activeMenuId === siswa.id && (
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute right-4 top-12 z-50 w-48 rounded-2xl border border-border bg-white p-1.5 shadow-xl text-left animate-in fade-in zoom-in-95 duration-100"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveMenuId(null);
-                              handleOpenEdit(siswa);
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                          >
-                            <SquarePen className="h-4 w-4 text-muted-foreground" />
-                            <span>Edit Data</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveMenuId(null);
-                              handleOpenPlot(siswa);
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                          >
-                            <UserPlus className="h-4 w-4 text-muted-foreground" />
-                            <span>Plot Pembimbing</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveMenuId(null);
-                              handleOpenStatus(siswa);
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                          >
-                            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                            <span>Ubah Status Magang</span>
-                          </button>
-
-                          <div className="border-t border-border/60 my-1" />
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveMenuId(null);
-                              setDeletingId(siswa.id);
-                            }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 rounded-xl hover:bg-red-50 transition-colors"
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                            <span>Hapus</span>
-                          </button>
-                        </div>
-                      )}
+                    <td className="py-4 px-4 text-right whitespace-nowrap">
+                      <ActionDropdown
+                        items={[
+                          {
+                            label: "Edit Data",
+                            icon: SquarePen,
+                            onClick: () => handleOpenEdit(siswa),
+                          },
+                          {
+                            label: "Plot Pembimbing",
+                            icon: UserPlus,
+                            onClick: () => handleOpenPlot(siswa),
+                          },
+                          {
+                            label: "Ubah Status Magang",
+                            icon: RefreshCw,
+                            onClick: () => handleOpenStatus(siswa),
+                          },
+                          {
+                            label: "Hapus",
+                            icon: Trash2,
+                            variant: "destructive",
+                            separatorBefore: true,
+                            onClick: () => setDeletingId(siswa.id),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 )))}

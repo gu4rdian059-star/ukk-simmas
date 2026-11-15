@@ -23,58 +23,24 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { fetchLogsAction } from "@/app/actions/crud";
 import type { ActivityLog } from "@/types/database";
 
 export default function AdminLogsPage() {
-  const [logs, setLogs] = React.useState<ActivityLog[]>([
-    {
-      id: "l1",
-      actor_email: "admin@simmas.sch.id",
-      actor_role: "admin",
-      action_type: "LOGIN_SUCCESS",
-      entity_type: "AUTH",
-      level: "INFO",
-      ip_address: "127.0.0.1",
-      metadata: { method: "password", browser: "Chrome/Next.js" },
-      created_at: new Date(Date.now() - 1000 * 60 * 2).toISOString(),
-    },
-    {
-      id: "l2",
-      actor_email: "admin@simmas.sch.id",
-      actor_role: "admin",
-      action_type: "UPDATE_SETTINGS",
-      entity_type: "SETTINGS",
-      entity_id: "1",
-      level: "INFO",
-      ip_address: "127.0.0.1",
-      metadata: { tab: "Identitas Aplikasi", updated_fields: ["appName"] },
-      created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-    },
-    {
-      id: "l3",
-      actor_email: "guru@simmas.sch.id",
-      actor_role: "guru",
-      action_type: "VALIDATE_JURNAL",
-      entity_type: "JURNAL",
-      entity_id: "j1",
-      level: "INFO",
-      ip_address: "127.0.0.1",
-      metadata: { status: "disetujui", student_nis: "21001" },
-      created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    },
-    {
-      id: "l4",
-      actor_email: "siswa@simmas.sch.id",
-      actor_role: "siswa",
-      action_type: "SUBMIT_PRESENSI",
-      entity_type: "ABSENSI",
-      entity_id: "a1",
-      level: "INFO",
-      ip_address: "127.0.0.1",
-      metadata: { status: "hadir", time: "07:30" },
-      created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-    },
-  ]);
+  const [logs, setLogs] = React.useState<any[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    async function loadLogs() {
+      setIsLoading(true);
+      const res = await fetchLogsAction();
+      if (res.success && res.data) {
+        setLogs(res.data);
+      }
+      setIsLoading(false);
+    }
+    loadLogs();
+  }, []);
 
   const [search, setSearch] = React.useState("");
   const [filterLevel, setFilterLevel] = React.useState("Semua");
@@ -157,15 +123,25 @@ export default function AdminLogsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
-              {filtered.map((log) => (
-                <tr key={log.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="p-4 text-muted-foreground font-mono">
-                    {new Date(log.created_at).toLocaleTimeString("id-ID", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      second: "2-digit",
-                    })}
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-muted-foreground">
+                    <p className="font-semibold text-xs text-foreground">Belum ada log aktivitas</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Log audit sistem akan otomatis tercatat setiap kali ada aksi di aplikasi.
+                    </p>
                   </td>
+                </tr>
+              ) : (
+                filtered.map((log) => (
+                  <tr key={log.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="p-4 text-muted-foreground font-mono">
+                      {new Date(log.timestamp || log.created_at || Date.now()).toLocaleTimeString("id-ID", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      })}
+                    </td>
                   <td className="p-4">
                     <Badge
                       variant={
@@ -207,7 +183,7 @@ export default function AdminLogsPage() {
                     </Button>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

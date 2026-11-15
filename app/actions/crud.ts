@@ -21,23 +21,51 @@ async function getSupabase() {
 export async function fetchSiswaListAction() {
   try {
     const supabase = await getSupabase();
-    const { data, error } = await supabase
+    // 1. Try with dudi_id and status (standard schema)
+    let res: any = await supabase
       .from("siswa")
       .select(`
         id, user_id, nis, kelas, status_magang, is_active, created_at,
         profiles:user_id ( id, nama, email, is_active ),
         penempatan_magang (
-          id, status_pengesahan,
-          tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat ),
+          id, status,
+          tempat_magang:dudi_id ( id, nama_perusahaan, alamat ),
           guru:guru_id ( id, nip, profiles:user_id ( id, nama, email ) )
         )
       `)
       .order("created_at", { ascending: false });
 
-    if (error || !data) return { success: false, data: [] };
+    // 2. If error, try with tempat_magang_id and status_pengesahan
+    if (res.error) {
+      res = await supabase
+        .from("siswa")
+        .select(`
+          id, user_id, nis, kelas, status_magang, is_active, created_at,
+          profiles:user_id ( id, nama, email, is_active ),
+          penempatan_magang (
+            id, status_pengesahan,
+            tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat ),
+            guru:guru_id ( id, nip, profiles:user_id ( id, nama, email ) )
+          )
+        `)
+        .order("created_at", { ascending: false });
+    }
+
+    // 3. If still error, fetch base siswa + profiles safely
+    if (res.error) {
+      res = await supabase
+        .from("siswa")
+        .select(`
+          id, user_id, nis, kelas, status_magang, is_active, created_at,
+          profiles:user_id ( id, nama, email, is_active )
+        `)
+        .order("created_at", { ascending: false });
+    }
+
+    if (res.error || !res.data) return { success: false, data: [] };
 
     // Format clean flat structure while preserving nested relations
-    const formatted = data.map((item: any) => {
+    const formatted = res.data.map((item: any) => {
       const profile = Array.isArray(item.profiles) ? item.profiles[0] : item.profiles;
       const penempatan = Array.isArray(item.penempatan_magang) ? item.penempatan_magang[0] : item.penempatan_magang;
       const tm = penempatan?.tempat_magang;
@@ -599,29 +627,45 @@ export async function deleteDudiAction(id: string) {
 export async function fetchPenempatanListAction() {
   try {
     const supabase = await getSupabase();
-    const { data, error } = await supabase
+    // 1. Try selecting with dudi_id first (standard 01_simmas_schema.sql)
+    let res: any = await supabase
       .from("penempatan_magang")
       .select(`
-        id, siswa_id, tempat_magang_id, guru_id, status_pengesahan, tanggal_mulai, tanggal_selesai, nilai_akhir, catatan_admin, created_at,
+        id, siswa_id, dudi_id, guru_id, status, tanggal_mulai, tanggal_selesai, nilai_akhir, created_at,
         siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama, email ) ),
-        tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat, kontak_pic ),
+        tempat_magang:dudi_id ( id, nama_perusahaan, alamat ),
         guru:guru_id ( id, nip, profiles:user_id ( nama, email ) )
       `)
       .order("created_at", { ascending: false });
 
-    if (error || !data) return { success: false, data: [] };
+    // 2. If column not found, fallback to tempat_magang_id & status_pengesahan
+    if (res.error) {
+      res = await supabase
+        .from("penempatan_magang")
+        .select(`
+          id, siswa_id, tempat_magang_id, guru_id, status_pengesahan, tanggal_mulai, tanggal_selesai, nilai_akhir, created_at,
+          siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama, email ) ),
+          tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat ),
+          guru:guru_id ( id, nip, profiles:user_id ( nama, email ) )
+        `)
+        .order("created_at", { ascending: false });
+    }
 
-    const formatted = data.map((p: any) => {
+    if (res.error || !res.data) return { success: false, data: [] };
+
+    const formatted = res.data.map((p: any) => {
       const siswa = Array.isArray(p.siswa) ? p.siswa[0] : p.siswa;
       const siswaProf = Array.isArray(siswa?.profiles) ? siswa.profiles[0] : siswa?.profiles;
       const tm = Array.isArray(p.tempat_magang) ? p.tempat_magang[0] : p.tempat_magang;
       const g = Array.isArray(p.guru) ? p.guru[0] : p.guru;
       const guruProf = Array.isArray(g?.profiles) ? g.profiles[0] : g?.profiles;
 
+      const pStatus = p.status || p.status_pengesahan || "aktif";
+
       return {
         id: p.id,
         siswa_id: p.siswa_id,
-        dudi_id: p.tempat_magang_id,
+        dudi_id: p.dudi_id || p.tempat_magang_id,
         guru_id: p.guru_id,
         siswaName: siswaProf?.nama || "Siswa",
         nis: siswa?.nis || "-",
@@ -630,7 +674,7 @@ export async function fetchPenempatanListAction() {
         guruName: guruProf?.nama || "-",
         tanggal_mulai: p.tanggal_mulai || "-",
         tanggal_selesai: p.tanggal_selesai || "-",
-        status: p.status_pengesahan === "lulus_magang" ? "selesai" : "aktif",
+        status: pStatus === "lulus_magang" || pStatus === "selesai" ? "selesai" : "aktif",
         nilai_akhir: p.nilai_akhir,
       };
     });
@@ -644,18 +688,29 @@ export async function fetchPenempatanListAction() {
 export async function fetchPengajuanListAction() {
   try {
     const supabase = await getSupabase();
-    const { data, error } = await supabase
+    let res: any = await supabase
       .from("pengajuan_magang")
       .select(`
-        id, siswa_id, tempat_magang_id, posisi, status, catatan_penolakan, tanggal_mulai, tanggal_selesai, tanggal_pengajuan,
+        id, siswa_id, dudi_id, posisi, status, alasan_penolakan, tanggal_mulai, tanggal_selesai, created_at,
         siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama, email ) ),
-        tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat )
+        tempat_magang:dudi_id ( id, nama_perusahaan, alamat )
       `)
-      .order("tanggal_pengajuan", { ascending: false });
+      .order("created_at", { ascending: false });
 
-    if (error || !data) return { success: false, data: [] };
+    if (res.error) {
+      res = await supabase
+        .from("pengajuan_magang")
+        .select(`
+          id, siswa_id, tempat_magang_id, posisi, status, catatan_penolakan, tanggal_mulai, tanggal_selesai, tanggal_pengajuan,
+          siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama, email ) ),
+          tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat )
+        `)
+        .order("tanggal_pengajuan", { ascending: false });
+    }
 
-    const formatted = data.map((q: any) => {
+    if (res.error || !res.data) return { success: false, data: [] };
+
+    const formatted = res.data.map((q: any) => {
       const siswa = Array.isArray(q.siswa) ? q.siswa[0] : q.siswa;
       const siswaProf = Array.isArray(siswa?.profiles) ? siswa.profiles[0] : siswa?.profiles;
       const tm = Array.isArray(q.tempat_magang) ? q.tempat_magang[0] : q.tempat_magang;
@@ -672,7 +727,7 @@ export async function fetchPengajuanListAction() {
         kelas: siswa?.kelas || "-",
         dudiName: tm?.nama_perusahaan || "-",
         dudiAddress: tm?.alamat || "-",
-        tanggalPengajuan: q.tanggal_pengajuan,
+        tanggalPengajuan: q.tanggal_pengajuan || q.created_at?.slice(0, 10) || "-",
       };
     });
 
@@ -691,27 +746,51 @@ export async function createPenempatanAction(data: {
 }) {
   try {
     const supabase = await getSupabase();
-    const { error } = await supabase.from("penempatan_magang").insert({
-      id: crypto.randomUUID(),
+    const id = crypto.randomUUID();
+
+    // 1. Try insert with dudi_id and status: "aktif"
+    let { error } = await supabase.from("penempatan_magang").insert({
+      id,
       siswa_id: data.siswa_id,
-      tempat_magang_id: data.dudi_id,
+      dudi_id: data.dudi_id,
       guru_id: data.guru_id,
       tanggal_mulai: data.tanggal_mulai,
       tanggal_selesai: data.tanggal_selesai,
-      status_pengesahan: "disahkan",
+      status: "aktif",
     });
+
+    // 2. If column not found, fallback to tempat_magang_id and status_pengesahan
+    if (error && (error.message.includes("dudi_id") || error.message.includes("status"))) {
+      const fallback = await supabase.from("penempatan_magang").insert({
+        id,
+        siswa_id: data.siswa_id,
+        tempat_magang_id: data.dudi_id,
+        guru_id: data.guru_id,
+        tanggal_mulai: data.tanggal_mulai,
+        tanggal_selesai: data.tanggal_selesai,
+        status_pengesahan: "disahkan",
+      });
+      error = fallback.error;
+    }
 
     if (error) throw new Error(error.message);
 
-    await supabase
+    // Update siswa status
+    const { error: sErr } = await supabase
       .from("siswa")
-      .update({
-        status_magang: "sedang_magang",
-      })
+      .update({ status_magang: "magang" })
       .eq("id", data.siswa_id);
+
+    if (sErr) {
+      await supabase
+        .from("siswa")
+        .update({ status_magang: "sedang_magang" })
+        .eq("id", data.siswa_id);
+    }
 
     revalidatePath("/admin/penempatan");
     revalidatePath("/admin/siswa");
+    revalidatePath("/admin/dashboard");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -738,25 +817,46 @@ export async function approvePengajuanAction(
       .update({ status: "disetujui" })
       .eq("id", pengajuanId);
 
-    await supabase.from("penempatan_magang").insert({
-      id: crypto.randomUUID(),
+    const id = crypto.randomUUID();
+    const targetDudiId = dudiId || pengajuan.dudi_id || pengajuan.tempat_magang_id;
+
+    let { error } = await supabase.from("penempatan_magang").insert({
+      id,
       siswa_id: pengajuan.siswa_id,
-      tempat_magang_id: dudiId || pengajuan.tempat_magang_id,
+      dudi_id: targetDudiId,
       guru_id: guruId,
       tanggal_mulai: pengajuan.tanggal_mulai,
       tanggal_selesai: pengajuan.tanggal_selesai,
-      status_pengesahan: "disahkan",
+      status: "aktif",
     });
 
-    await supabase
+    if (error) {
+      await supabase.from("penempatan_magang").insert({
+        id,
+        siswa_id: pengajuan.siswa_id,
+        tempat_magang_id: targetDudiId,
+        guru_id: guruId,
+        tanggal_mulai: pengajuan.tanggal_mulai,
+        tanggal_selesai: pengajuan.tanggal_selesai,
+        status_pengesahan: "disahkan",
+      });
+    }
+
+    const { error: sErr } = await supabase
       .from("siswa")
-      .update({
-        status_magang: "sedang_magang",
-      })
+      .update({ status_magang: "magang" })
       .eq("id", pengajuan.siswa_id);
+
+    if (sErr) {
+      await supabase
+        .from("siswa")
+        .update({ status_magang: "sedang_magang" })
+        .eq("id", pengajuan.siswa_id);
+    }
 
     revalidatePath("/admin/penempatan");
     revalidatePath("/admin/siswa");
+    revalidatePath("/admin/dashboard");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -785,6 +885,22 @@ export async function rejectPengajuanAction(pengajuanId: string, alasan: string)
 // ----------------------------------------------------------------------
 // 5. SETTINGS ACTIONS
 // ----------------------------------------------------------------------
+
+export async function fetchLogsAction() {
+  try {
+    const supabase = await getSupabase();
+    const { data, error } = await supabase
+      .from("activity_logs")
+      .select("*")
+      .order("timestamp", { ascending: false })
+      .limit(100);
+
+    if (error || !data) return { success: false, data: [] };
+    return { success: true, data };
+  } catch (err: any) {
+    return { success: false, data: [] };
+  }
+}
 
 export async function fetchSettingsAction() {
   try {
@@ -921,17 +1037,31 @@ export async function submitNilaiAction(
 ) {
   try {
     const supabase = await getSupabase();
-    const { error } = await supabase
+    let { error } = await supabase
       .from("penempatan_magang")
       .update({
         nilai_akhir: nilai,
-        catatan_admin: catatan || null,
-        status_pengesahan: "lulus_magang",
+        catatan_nilai: catatan || null,
+        status: "selesai",
       })
       .eq("id", penempatanId);
 
+    if (error && (error.message.includes("catatan_nilai") || error.message.includes("status"))) {
+      const fb = await supabase
+        .from("penempatan_magang")
+        .update({
+          nilai_akhir: nilai,
+          catatan_admin: catatan || null,
+          status_pengesahan: "lulus_magang",
+        })
+        .eq("id", penempatanId);
+      error = fb.error;
+    }
+
     if (error) throw new Error(error.message);
     revalidatePath("/guru/siswa");
+    revalidatePath("/admin/penempatan");
+    revalidatePath("/admin/siswa");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -945,16 +1075,28 @@ export async function validateJurnalAction(
 ) {
   try {
     const supabase = await getSupabase();
-    const { error } = await supabase
+    let { error } = await supabase
       .from("jurnal_harian")
       .update({
-        status_verifikasi: status,
+        status: status,
         catatan_guru: catatan || null,
       })
       .eq("id", jurnalId);
 
+    if (error && error.message.includes("status")) {
+      const fb = await supabase
+        .from("jurnal_harian")
+        .update({
+          status_verifikasi: status,
+          catatan_guru: catatan || null,
+        })
+        .eq("id", jurnalId);
+      error = fb.error;
+    }
+
     if (error) throw new Error(error.message);
     revalidatePath("/guru/jurnal");
+    revalidatePath("/siswa/jurnal");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -968,16 +1110,28 @@ export async function validateAbsensiAction(
 ) {
   try {
     const supabase = await getSupabase();
-    const { error } = await supabase
+    let { error } = await supabase
       .from("absensi")
       .update({
-        status_validasi: status,
+        validasi_status: status,
         catatan_guru: catatan || null,
       })
       .eq("id", absensiId);
 
+    if (error && error.message.includes("validasi_status")) {
+      const fb = await supabase
+        .from("absensi")
+        .update({
+          status_validasi: status,
+          catatan_guru: catatan || null,
+        })
+        .eq("id", absensiId);
+      error = fb.error;
+    }
+
     if (error) throw new Error(error.message);
     revalidatePath("/guru/jurnal");
+    revalidatePath("/siswa/absensi");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -1000,14 +1154,26 @@ export async function createKunjunganAction(data: {
       targetGuruId = g?.id;
     }
 
-    const { error } = await supabase.from("kunjungan").insert({
+    let { error } = await supabase.from("kunjungan").insert({
       id: crypto.randomUUID(),
       tanggal: data.tanggal,
       catatan: data.catatan,
       photo_url: data.photo_url || null,
       guru_id: targetGuruId,
-      tempat_magang_id: data.dudi_id,
+      dudi_id: data.dudi_id,
     });
+
+    if (error && error.message.includes("dudi_id")) {
+      const fb = await supabase.from("kunjungan").insert({
+        id: crypto.randomUUID(),
+        tanggal: data.tanggal,
+        catatan: data.catatan,
+        photo_url: data.photo_url || null,
+        guru_id: targetGuruId,
+        tempat_magang_id: data.dudi_id,
+      });
+      error = fb.error;
+    }
 
     if (error) throw new Error(error.message);
     revalidatePath("/guru/kunjungan");
@@ -1029,6 +1195,284 @@ export async function deleteKunjunganAction(id: string) {
   }
 }
 
+export async function fetchKunjunganListAction() {
+  try {
+    const supabase = await getSupabase();
+    let res: any = await supabase
+      .from("kunjungan")
+      .select(`
+        id, tanggal, catatan, photo_url, dudi_id, guru_id,
+        tempat_magang:dudi_id ( id, nama_perusahaan, alamat ),
+        guru:guru_id ( id, nip, profiles:user_id ( nama ) )
+      `)
+      .order("tanggal", { ascending: false });
+
+    if (res.error) {
+      res = await supabase
+        .from("kunjungan")
+        .select(`
+          id, tanggal, catatan, photo_url, tempat_magang_id, guru_id,
+          tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat ),
+          guru:guru_id ( id, nip, profiles:user_id ( nama ) )
+        `)
+        .order("tanggal", { ascending: false });
+    }
+
+    if (res.error || !res.data) return { success: true, data: [] };
+
+    const formatted = res.data.map((k: any) => {
+      const tm = Array.isArray(k.tempat_magang) ? k.tempat_magang[0] : k.tempat_magang;
+      const g = Array.isArray(k.guru) ? k.guru[0] : k.guru;
+      const guruProf = Array.isArray(g?.profiles) ? g.profiles[0] : g?.profiles;
+
+      return {
+        id: k.id,
+        dudi_id: k.dudi_id || k.tempat_magang_id,
+        dudiName: tm?.nama_perusahaan || "Mitra Industri",
+        dudiAddress: tm?.alamat || "-",
+        guruName: guruProf?.nama || "Guru Pembimbing",
+        tanggal: k.tanggal,
+        catatan: k.catatan,
+        photoUrl: k.photo_url || null,
+      };
+    });
+
+    return { success: true, data: formatted };
+  } catch (err: any) {
+    return { success: false, error: err.message, data: [] };
+  }
+}
+
+export async function fetchGuruSiswaBimbinganAction() {
+  try {
+    const supabase = await getSupabase();
+    let res: any = await supabase
+      .from("siswa")
+      .select(`
+        id, nis, kelas, status_magang,
+        profiles:user_id ( nama, email ),
+        penempatan_magang (
+          id, nilai_akhir, catatan_nilai, status,
+          tempat_magang:dudi_id ( id, nama_perusahaan, alamat )
+        )
+      `)
+      .order("created_at", { ascending: false });
+
+    if (res.error) {
+      res = await supabase
+        .from("siswa")
+        .select(`
+          id, nis, kelas, status_magang,
+          profiles:user_id ( nama, email ),
+          penempatan_magang (
+            id, nilai_akhir, catatan_admin, status_pengesahan,
+            tempat_magang:tempat_magang_id ( id, nama_perusahaan, alamat )
+          )
+        `)
+        .order("created_at", { ascending: false });
+    }
+
+    if (res.error || !res.data) return { success: true, data: [] };
+
+    const formatted = res.data.map((s: any) => {
+      const profile = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+      const penempatan = Array.isArray(s.penempatan_magang) ? s.penempatan_magang[0] : s.penempatan_magang;
+      const tm = Array.isArray(penempatan?.tempat_magang) ? penempatan?.tempat_magang[0] : penempatan?.tempat_magang;
+
+      return {
+        id: s.id,
+        penempatanId: penempatan?.id || null,
+        nis: s.nis,
+        nama: profile?.nama || "Siswa",
+        kelas: s.kelas,
+        dudiName: tm?.nama_perusahaan || "-",
+        dudiAddress: tm?.alamat || "-",
+        status: s.status_magang || "belum_magang",
+        nilaiAkhir: penempatan?.nilai_akhir ?? null,
+        catatanNilai: penempatan?.catatan_nilai || penempatan?.catatan_admin || null,
+      };
+    });
+
+    return { success: true, data: formatted };
+  } catch (err: any) {
+    return { success: false, error: err.message, data: [] };
+  }
+}
+
+export async function fetchGuruValidasiAction() {
+  try {
+    const supabase = await getSupabase();
+    // 1. Fetch journals
+    let jRes: any = await supabase
+      .from("jurnal_harian")
+      .select(`
+        id, tanggal, kegiatan, kendala, solusi, photo_url, status, catatan_guru,
+        siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama ) )
+      `)
+      .order("tanggal", { ascending: false });
+
+    if (jRes.error) {
+      jRes = await supabase
+        .from("jurnal_harian")
+        .select(`
+          id, tanggal, kegiatan, kendala, solusi, photo_url, status_verifikasi, catatan_guru,
+          siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama ) )
+        `)
+        .order("tanggal", { ascending: false });
+    }
+
+    // 2. Fetch attendances
+    let aRes: any = await supabase
+      .from("absensi")
+      .select(`
+        id, tanggal, status, waktu_masuk, waktu_pulang, photo_masuk_url, validasi_status, catatan_guru,
+        siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama ) )
+      `)
+      .order("tanggal", { ascending: false });
+
+    if (aRes.error) {
+      aRes = await supabase
+        .from("absensi")
+        .select(`
+          id, tanggal, status, jam_masuk, jam_pulang, photo_masuk_url, status_validasi, catatan_guru,
+          siswa:siswa_id ( id, nis, kelas, profiles:user_id ( nama ) )
+        `)
+        .order("tanggal", { ascending: false });
+    }
+
+    const jurnal = (jRes.data || []).map((j: any) => {
+      const siswa = Array.isArray(j.siswa) ? j.siswa[0] : j.siswa;
+      const profile = Array.isArray(siswa?.profiles) ? siswa?.profiles[0] : siswa?.profiles;
+      return {
+        id: j.id,
+        tanggal: j.tanggal,
+        siswaName: profile?.nama || "Siswa",
+        nis: siswa?.nis || "-",
+        kelas: siswa?.kelas || "-",
+        kegiatan: j.kegiatan,
+        kendala: j.kendala,
+        solusi: j.solusi,
+        photoUrl: j.photo_url,
+        status: (j.status || j.status_verifikasi || "menunggu") as "menunggu" | "disetujui" | "revisi",
+        catatanGuru: j.catatan_guru,
+      };
+    });
+
+    const absensi = (aRes.data || []).map((a: any) => {
+      const siswa = Array.isArray(a.siswa) ? a.siswa[0] : a.siswa;
+      const profile = Array.isArray(siswa?.profiles) ? siswa?.profiles[0] : siswa?.profiles;
+      return {
+        id: a.id,
+        tanggal: a.tanggal,
+        siswaName: profile?.nama || "Siswa",
+        nis: siswa?.nis || "-",
+        kelas: siswa?.kelas || "-",
+        status: a.status || "hadir",
+        waktuMasuk: a.waktu_masuk || a.jam_masuk || "-",
+        waktuPulang: a.waktu_pulang || a.jam_pulang || "-",
+        photoUrl: a.photo_masuk_url || null,
+        validasiStatus: (a.validasi_status || a.status_validasi || "pending") as "pending" | "approved" | "rejected",
+        catatanGuru: a.catatan_guru,
+      };
+    });
+
+    return { success: true, data: { jurnal, absensi } };
+  } catch (err: any) {
+    return { success: false, error: err.message, data: { jurnal: [], absensi: [] } };
+  }
+}
+
+export async function fetchSiswaAbsensiAction(siswaId?: string) {
+  try {
+    const supabase = await getSupabase();
+    let targetSiswaId = siswaId;
+    if (!targetSiswaId) {
+      const { data: s } = await supabase.from("siswa").select("id").limit(1).maybeSingle();
+      targetSiswaId = s?.id;
+    }
+
+    if (!targetSiswaId) return { success: true, data: { today: null, history: [] } };
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const { data: records, error } = await supabase
+      .from("absensi")
+      .select("*")
+      .eq("siswa_id", targetSiswaId)
+      .order("tanggal", { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    const list = records || [];
+    const todayRecord = list.find((r: any) => r.tanggal === todayStr);
+
+    const history = list.map((h: any) => ({
+      id: h.id,
+      tanggal: h.tanggal,
+      status: h.status,
+      waktuMasuk: h.waktu_masuk || h.jam_masuk || "-",
+      waktuPulang: h.waktu_pulang || h.jam_pulang || "-",
+      validasiStatus: h.validasi_status || h.status_validasi || "pending",
+      catatanGuru: h.catatan_guru,
+    }));
+
+    const today = todayRecord
+      ? {
+          clockedIn: Boolean(todayRecord.waktu_masuk || todayRecord.jam_masuk),
+          clockedOut: Boolean(todayRecord.waktu_pulang || todayRecord.jam_pulang),
+          waktuMasuk: todayRecord.waktu_masuk || todayRecord.jam_masuk || "07:30",
+          waktuPulang: todayRecord.waktu_pulang || todayRecord.jam_pulang || null,
+          status: todayRecord.status || "hadir",
+        }
+      : {
+          clockedIn: false,
+          clockedOut: false,
+          waktuMasuk: null,
+          waktuPulang: null,
+          status: "hadir",
+        };
+
+    return { success: true, data: { today, history } };
+  } catch (err: any) {
+    return { success: false, error: err.message, data: { today: null, history: [] } };
+  }
+}
+
+export async function fetchSiswaJurnalAction(siswaId?: string) {
+  try {
+    const supabase = await getSupabase();
+    let targetSiswaId = siswaId;
+    if (!targetSiswaId) {
+      const { data: s } = await supabase.from("siswa").select("id").limit(1).maybeSingle();
+      targetSiswaId = s?.id;
+    }
+
+    if (!targetSiswaId) return { success: true, data: [] };
+
+    const { data, error } = await supabase
+      .from("jurnal_harian")
+      .select("*")
+      .eq("siswa_id", targetSiswaId)
+      .order("tanggal", { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    const formatted = (data || []).map((j: any) => ({
+      id: j.id,
+      tanggal: j.tanggal,
+      kegiatan: j.kegiatan,
+      kendala: j.kendala,
+      solusi: j.solusi,
+      photoUrl: j.photo_url,
+      status: j.status || j.status_verifikasi || "menunggu",
+      catatanGuru: j.catatan_guru,
+    }));
+
+    return { success: true, data: formatted };
+  } catch (err: any) {
+    return { success: false, error: err.message, data: [] };
+  }
+}
+
 export async function submitPengajuanAction(data: {
   siswa_id?: string;
   dudi_id?: string;
@@ -1040,23 +1484,57 @@ export async function submitPengajuanAction(data: {
     const supabase = await getSupabase();
     let targetSiswaId = data.siswa_id;
     if (!targetSiswaId) {
-      const { data: s } = await supabase.from("siswa").select("id").limit(1).maybeSingle();
+      const { data: s } = await supabase
+        .from("siswa")
+        .select("id")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
       targetSiswaId = s?.id;
     }
 
-    const { error } = await supabase.from("pengajuan_magang").insert({
-      id: crypto.randomUUID(),
+    if (!targetSiswaId) {
+      throw new Error("Data siswa tidak ditemukan di sistem.");
+    }
+
+    const id = crypto.randomUUID();
+
+    // 1. Try insert with dudi_id (01_simmas_schema.sql standard)
+    let { error } = await supabase.from("pengajuan_magang").insert({
+      id,
       siswa_id: targetSiswaId,
-      tempat_magang_id: data.dudi_id || null,
+      dudi_id: data.dudi_id || null,
       posisi: data.posisi,
       tanggal_mulai: data.tanggal_mulai,
       tanggal_selesai: data.tanggal_selesai,
       status: "menunggu",
-      tanggal_pengajuan: new Date().toISOString().slice(0, 10),
     });
 
+    // 2. Fallback to tempat_magang_id if needed
+    if (error && error.message.includes("dudi_id")) {
+      const fb = await supabase.from("pengajuan_magang").insert({
+        id,
+        siswa_id: targetSiswaId,
+        tempat_magang_id: data.dudi_id || null,
+        posisi: data.posisi,
+        tanggal_mulai: data.tanggal_mulai,
+        tanggal_selesai: data.tanggal_selesai,
+        status: "menunggu",
+      });
+      error = fb.error;
+    }
+
     if (error) throw new Error(error.message);
+
+    // Update siswa status
+    await supabase
+      .from("siswa")
+      .update({ status_magang: "menunggu" })
+      .eq("id", targetSiswaId);
+
     revalidatePath("/siswa/pengajuan");
+    revalidatePath("/admin/penempatan");
+    revalidatePath("/admin/dashboard");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -1072,23 +1550,78 @@ export async function submitClockInAction(
     const today = new Date().toISOString().slice(0, 10);
     const time = new Date().toTimeString().slice(0, 5);
 
-    const { data: s } = await supabase.from("siswa").select("id").limit(1).maybeSingle();
+    const { data: s } = await supabase
+      .from("siswa")
+      .select("id")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     const targetSiswaId = s?.id;
 
-    const { error } = await supabase.from("absensi").upsert(
-      {
+    if (!targetSiswaId) {
+      throw new Error("Data siswa tidak ditemukan.");
+    }
+
+    // 1. Check if record already exists for today
+    const { data: existing } = await supabase
+      .from("absensi")
+      .select("id")
+      .eq("siswa_id", targetSiswaId)
+      .eq("tanggal", today)
+      .maybeSingle();
+
+    if (existing?.id) {
+      // Update existing record
+      let updateData: any = { status, waktu_masuk: time };
+      let { error: uErr } = await supabase
+        .from("absensi")
+        .update(updateData)
+        .eq("id", existing.id);
+
+      if (uErr && uErr.message.includes("waktu_masuk")) {
+        updateData = { status, jam_masuk: time };
+        uErr = (await supabase.from("absensi").update(updateData).eq("id", existing.id)).error;
+      }
+      if (uErr) throw new Error(uErr.message);
+    } else {
+      // Insert new record
+      const newId = crypto.randomUUID();
+      let insertData: any = {
+        id: newId,
         siswa_id: targetSiswaId,
         tanggal: today,
         status,
-        jam_masuk: time,
-        keterangan: catatan || null,
-        status_validasi: "pending",
-      },
-      { onConflict: "siswa_id,tanggal" }
-    );
+        waktu_masuk: time,
+        validasi_status: "pending",
+      };
 
-    if (error) throw new Error(error.message);
+      let { error: iErr } = await supabase.from("absensi").insert(insertData);
+
+      // Fallback 1: if waktu_masuk or validasi_status fail
+      if (iErr && (iErr.message.includes("waktu_masuk") || iErr.message.includes("validasi_status"))) {
+        insertData = {
+          id: newId,
+          siswa_id: targetSiswaId,
+          tanggal: today,
+          status,
+          jam_masuk: time,
+          status_validasi: "pending",
+        };
+        iErr = (await supabase.from("absensi").insert(insertData)).error;
+      }
+
+      // Fallback 2: if status_validasi also fails, try minimal columns
+      if (iErr && (iErr.message.includes("status_validasi") || iErr.message.includes("validasi_status"))) {
+        delete insertData.status_validasi;
+        delete insertData.validasi_status;
+        iErr = (await supabase.from("absensi").insert(insertData)).error;
+      }
+
+      if (iErr) throw new Error(iErr.message);
+    }
+
     revalidatePath("/siswa/absensi");
+    revalidatePath("/guru/jurnal");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -1101,17 +1634,38 @@ export async function submitClockOutAction() {
     const today = new Date().toISOString().slice(0, 10);
     const time = new Date().toTimeString().slice(0, 5);
 
-    const { data: s } = await supabase.from("siswa").select("id").limit(1).maybeSingle();
+    const { data: s } = await supabase
+      .from("siswa")
+      .select("id")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     const targetSiswaId = s?.id;
 
-    const { error } = await supabase
+    if (!targetSiswaId) {
+      throw new Error("Data siswa tidak ditemukan.");
+    }
+
+    // 1. Try standard schema (waktu_pulang)
+    let { error } = await supabase
       .from("absensi")
-      .update({ jam_pulang: time })
+      .update({ waktu_pulang: time })
       .eq("siswa_id", targetSiswaId)
       .eq("tanggal", today);
 
+    // 2. Fallback to jam_pulang
+    if (error && error.message.includes("waktu_pulang")) {
+      const fb = await supabase
+        .from("absensi")
+        .update({ jam_pulang: time })
+        .eq("siswa_id", targetSiswaId)
+        .eq("tanggal", today);
+      error = fb.error;
+    }
+
     if (error) throw new Error(error.message);
     revalidatePath("/siswa/absensi");
+    revalidatePath("/guru/jurnal");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };
@@ -1126,21 +1680,46 @@ export async function createJurnalAction(data: {
 }) {
   try {
     const supabase = await getSupabase();
-    const { data: s } = await supabase.from("siswa").select("id").limit(1).maybeSingle();
+    const { data: s } = await supabase
+      .from("siswa")
+      .select("id")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     const targetSiswaId = s?.id;
 
-    const { error } = await supabase.from("jurnal_harian").insert({
+    if (!targetSiswaId) {
+      throw new Error("Data siswa tidak ditemukan.");
+    }
+
+    // 1. Try standard schema (status: "menunggu")
+    let { error } = await supabase.from("jurnal_harian").insert({
       id: crypto.randomUUID(),
       siswa_id: targetSiswaId,
       tanggal: data.tanggal,
       kegiatan: data.kegiatan,
       kendala: data.kendala || null,
       solusi: data.solusi || null,
-      status_verifikasi: "menunggu",
+      status: "menunggu",
     });
+
+    // 2. Fallback to status_verifikasi if needed
+    if (error && error.message.includes("status")) {
+      const fb = await supabase.from("jurnal_harian").insert({
+        id: crypto.randomUUID(),
+        siswa_id: targetSiswaId,
+        tanggal: data.tanggal,
+        kegiatan: data.kegiatan,
+        kendala: data.kendala || null,
+        solusi: data.solusi || null,
+        status_verifikasi: "menunggu",
+      });
+      error = fb.error;
+    }
 
     if (error) throw new Error(error.message);
     revalidatePath("/siswa/jurnal");
+    revalidatePath("/guru/jurnal");
     return { success: true };
   } catch (err: any) {
     return { success: false, error: err.message };

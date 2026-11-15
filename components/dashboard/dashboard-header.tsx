@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Menu, Search, LogOut, ChevronDown, UserCheck, Bell, PanelLeftClose } from "lucide-react";
+import { Menu, Search, LogOut, ChevronDown, UserCheck, Bell, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { logoutAction } from "@/app/actions/auth";
@@ -15,6 +15,7 @@ interface DashboardHeaderProps {
   userName?: string;
   userEmail?: string;
   breadcrumbs?: { title: string; href?: string }[];
+  isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
 }
 
@@ -24,6 +25,7 @@ export function DashboardHeader({
   userName = "Pengguna",
   userEmail = "user@simmas.sch.id",
   breadcrumbs = [{ title: "Overview" }, { title: "Dashboard" }],
+  isSidebarCollapsed = false,
   onToggleSidebar,
 }: DashboardHeaderProps) {
   const router = useRouter();
@@ -66,10 +68,15 @@ export function DashboardHeader({
         <button
           type="button"
           onClick={onToggleSidebar}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          aria-label="Toggle Sidebar"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+          aria-label={isSidebarCollapsed ? "Perluas Sidebar" : "Ciutkan Sidebar"}
+          title={isSidebarCollapsed ? "Perluas Sidebar" : "Ciutkan Sidebar"}
         >
-          <PanelLeftClose className="h-4 w-4" />
+          {isSidebarCollapsed ? (
+            <PanelLeftOpen className="h-4 w-4" />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" />
+          )}
         </button>
 
         <h1 className="text-sm font-semibold text-foreground tracking-tight ml-1">

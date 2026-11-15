@@ -12,19 +12,34 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { submitClockInAction, submitClockOutAction } from "@/app/actions/crud";
+import {
+  fetchSiswaAbsensiAction,
+  submitClockInAction,
+  submitClockOutAction,
+} from "@/app/actions/crud";
 import { toast } from "sonner";
+
+interface AbsensiItem {
+  id: string;
+  tanggal: string;
+  status: string;
+  waktuMasuk: string;
+  waktuPulang: string;
+  validasiStatus: string;
+  catatanGuru?: string | null;
+}
 
 export default function SiswaAbsensiPage() {
   const [time, setTime] = React.useState<string>("");
   const [status, setStatus] = React.useState<"hadir" | "izin" | "sakit">("hadir");
-  const [isClockedIn, setIsClockedIn] = React.useState(true);
+  const [isClockedIn, setIsClockedIn] = React.useState(false);
   const [isClockedOut, setIsClockedOut] = React.useState(false);
-  const [waktuMasuk, setWaktuMasuk] = React.useState("07:30");
+  const [waktuMasuk, setWaktuMasuk] = React.useState<string | null>(null);
   const [waktuPulang, setWaktuPulang] = React.useState<string | null>(null);
+  const [history, setHistory] = React.useState<AbsensiItem[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   React.useEffect(() => {
@@ -43,63 +58,67 @@ export default function SiswaAbsensiPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const [history, setHistory] = React.useState([
-    {
-      id: "a1",
-      tanggal: "2026-11-13",
-      status: "hadir",
-      waktuMasuk: "07:30",
-      waktuPulang: "-",
-      validasiStatus: "pending",
-    },
-    {
-      id: "a2",
-      tanggal: "2026-11-12",
-      status: "hadir",
-      waktuMasuk: "07:28",
-      waktuPulang: "16:05",
-      validasiStatus: "approved",
-    },
-    {
-      id: "a3",
-      tanggal: "2026-11-11",
-      status: "hadir",
-      waktuMasuk: "07:25",
-      waktuPulang: "16:00",
-      validasiStatus: "approved",
-    },
-    {
-      id: "a4",
-      tanggal: "2026-11-10",
-      status: "izin",
-      waktuMasuk: "-",
-      waktuPulang: "-",
-      validasiStatus: "approved",
-    },
-  ]);
+  const loadData = React.useCallback(async () => {
+    try {
+      const res = await fetchSiswaAbsensiAction();
+      if (res.success && res.data) {
+        setHistory(res.data.history);
+        if (res.data.today) {
+          setIsClockedIn(res.data.today.clockedIn);
+          setIsClockedOut(res.data.today.clockedOut);
+          setWaktuMasuk(res.data.today.waktuMasuk);
+          setWaktuPulang(res.data.today.waktuPulang);
+          if (res.data.today.status) {
+            setStatus(res.data.today.status as any);
+          }
+        } else {
+          setIsClockedIn(false);
+          setIsClockedOut(false);
+          setWaktuMasuk(null);
+          setWaktuPulang(null);
+        }
+      }
+    } catch (err) {
+      console.error("Gagal memuat absensi:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleClockIn = async () => {
     setIsSubmitting(true);
-    await submitClockInAction(status);
+    const res = await submitClockInAction(status);
+    if (!res.success) {
+      toast.error(res.error || "Gagal mencatat clock in.");
+      setIsSubmitting(false);
+      return;
+    }
     const nowTime = new Date().toTimeString().slice(0, 5);
     setWaktuMasuk(nowTime);
     setIsClockedIn(true);
-    setIsSubmitting(false);
     toast.success(`Clock In berhasil dicatat pada pukul ${nowTime}.`);
+    await loadData();
+    setIsSubmitting(false);
   };
 
   const handleClockOut = async () => {
     setIsSubmitting(true);
-    await submitClockOutAction();
+    const res = await submitClockOutAction();
+    if (!res.success) {
+      toast.error(res.error || "Gagal mencatat clock out.");
+      setIsSubmitting(false);
+      return;
+    }
     const nowTime = new Date().toTimeString().slice(0, 5);
     setWaktuPulang(nowTime);
     setIsClockedOut(true);
-    setIsSubmitting(false);
-
-    setHistory((prev) =>
-      prev.map((h, idx) => (idx === 0 ? { ...h, waktuPulang: nowTime } : h))
-    );
     toast.success(`Clock Out berhasil dicatat pada pukul ${nowTime}.`);
+    await loadData();
+    setIsSubmitting(false);
   };
 
   return (
@@ -164,7 +183,11 @@ export default function SiswaAbsensiPage() {
               disabled={isClockedIn || isSubmitting}
               className="font-bold gap-2"
             >
-              <Clock className="h-4 w-4" />
+              {isSubmitting && !isClockedIn ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Clock className="h-4 w-4" />
+              )}
               Clock In
             </Button>
             <Button
@@ -174,7 +197,11 @@ export default function SiswaAbsensiPage() {
               disabled={!isClockedIn || isClockedOut || isSubmitting}
               className="font-bold gap-2"
             >
-              <CheckCircle2 className="h-4 w-4" />
+              {isSubmitting && isClockedIn ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
               Clock Out
             </Button>
           </div>
@@ -187,7 +214,7 @@ export default function SiswaAbsensiPage() {
               Ringkasan Jam Kerja Hari Ini
             </h3>
             <p className="text-xs text-muted-foreground mb-6">
-              Verifikasi jam masuk dan kepulangan dari mitra industri.
+              Verifikasi jam masuk dan kepulangan dari tempat magang.
             </p>
 
             <div className="grid grid-cols-2 gap-4">
@@ -199,7 +226,7 @@ export default function SiswaAbsensiPage() {
                   {waktuMasuk || "-"}
                 </p>
                 <span className="text-[10px] text-emerald-600 font-semibold mt-1 inline-block">
-                  Tepat Waktu
+                  {waktuMasuk ? "Tepat Waktu" : "Belum Masuk"}
                 </span>
               </div>
 
@@ -211,7 +238,7 @@ export default function SiswaAbsensiPage() {
                   {waktuPulang || "-"}
                 </p>
                 <span className="text-[10px] text-muted-foreground font-semibold mt-1 inline-block">
-                  {waktuPulang ? "Presensi Lengkap" : "Menunggu Jam Pulang"}
+                  {waktuPulang ? "Presensi Selesai" : "Menunggu Jam Pulang"}
                 </span>
               </div>
             </div>
@@ -230,52 +257,68 @@ export default function SiswaAbsensiPage() {
       <Card className="overflow-hidden">
         <div className="p-4 border-b border-border/80">
           <h3 className="font-bold text-sm text-foreground">
-            Riwayat Absensi Bulan Ini
+            Riwayat Absensi ({history.length})
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/40 border-b border-border/80">
-              <tr className="text-left font-bold text-muted-foreground">
-                <th className="p-4 uppercase tracking-wider">Tanggal</th>
-                <th className="p-4 uppercase tracking-wider">Status</th>
-                <th className="p-4 uppercase tracking-wider">Masuk</th>
-                <th className="p-4 uppercase tracking-wider">Pulang</th>
-                <th className="p-4 uppercase tracking-wider">Status Validasi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {history.map((h) => (
-                <tr key={h.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="p-4 font-mono font-medium text-foreground">
-                    {h.tanggal}
-                  </td>
-                  <td className="p-4">
-                    <span className="font-bold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                      {h.status}
-                    </span>
-                  </td>
-                  <td className="p-4 font-mono font-bold">{h.waktuMasuk}</td>
-                  <td className="p-4 font-mono font-bold">{h.waktuPulang}</td>
-                  <td className="p-4">
-                    <Badge
-                      variant={
-                        h.validasiStatus === "approved"
-                          ? "success"
-                          : "warning"
-                      }
-                      className="text-[10px] uppercase font-bold"
-                    >
-                      {h.validasiStatus === "approved" ? "Disetujui" : "Menunggu"}
-                    </Badge>
-                  </td>
+          {history.length === 0 ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              Belum ada riwayat presensi yang tercatat di database.
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="bg-muted/40 border-b border-border/80">
+                <tr className="text-left font-bold text-muted-foreground">
+                  <th className="p-4 uppercase tracking-wider">Tanggal</th>
+                  <th className="p-4 uppercase tracking-wider">Status</th>
+                  <th className="p-4 uppercase tracking-wider">Masuk</th>
+                  <th className="p-4 uppercase tracking-wider">Pulang</th>
+                  <th className="p-4 uppercase tracking-wider">Status Validasi</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {history.map((h) => (
+                  <tr key={h.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="p-4 font-mono font-medium text-foreground">
+                      {h.tanggal}
+                    </td>
+                    <td className="p-4">
+                      <span className="font-bold uppercase tracking-wider text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                        {h.status}
+                      </span>
+                    </td>
+                    <td className="p-4 font-mono font-bold">{h.waktuMasuk}</td>
+                    <td className="p-4 font-mono font-bold">{h.waktuPulang}</td>
+                    <td className="p-4">
+                      <Badge
+                        variant={
+                          h.validasiStatus === "approved"
+                            ? "success"
+                            : h.validasiStatus === "rejected"
+                            ? "destructive"
+                            : "warning"
+                        }
+                        className="text-[10px] uppercase font-bold"
+                      >
+                        {h.validasiStatus === "approved"
+                          ? "Disetujui"
+                          : h.validasiStatus === "rejected"
+                          ? "Ditolak"
+                          : "Menunggu"}
+                      </Badge>
+                      {h.catatanGuru && (
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Catatan: {h.catatanGuru}
+                        </p>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </Card>
     </div>
   );
 }
-

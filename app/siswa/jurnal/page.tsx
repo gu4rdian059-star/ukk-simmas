@@ -19,40 +19,26 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
-import { createJurnalAction, deleteJurnalAction } from "@/app/actions/crud";
+import {
+  createJurnalAction,
+  deleteJurnalAction,
+  fetchSiswaJurnalAction,
+} from "@/app/actions/crud";
 import { toast } from "sonner";
-import type { JurnalHarian } from "@/types/database";
+
+interface JurnalItem {
+  id: string;
+  tanggal: string;
+  kegiatan: string;
+  kendala?: string | null;
+  solusi?: string | null;
+  status: string;
+  catatanGuru?: string | null;
+}
 
 export default function SiswaJurnalPage() {
-  const [jurnalList, setJurnalList] = React.useState<any[]>([
-    {
-      id: "j1",
-      tanggal: "2026-11-12",
-      kegiatan: "Implementasi autentikasi JWT dan middleware RBAC pada Next.js",
-      kendala: "Token refresh cookie sempat gagal tersimpan di browser.",
-      solusi: "Menambahkan opsi SameSite Lax dan Path / pada server action cookie.",
-      status: "menunggu",
-      catatanGuru: null,
-    },
-    {
-      id: "j2",
-      tanggal: "2026-11-11",
-      kegiatan: "Merancang desain database PostgreSQL Supabase untuk 10 tabel utama",
-      kendala: "Penyesuaian foreign key delete cascade.",
-      solusi: "Membaca dokumentasi PostgreSQL dan spesifikasi UKK.",
-      status: "disetujui",
-      catatanGuru: "Sangat baik, pertahankan kerapian ERD.",
-    },
-    {
-      id: "j3",
-      tanggal: "2026-11-10",
-      kegiatan: "Setup repositori Next.js 16 dengan TypeScript dan Tailwind CSS",
-      kendala: "Konfigurasi Tailwind CSS v4 dengan variabel CSS.",
-      solusi: "Menyesuaikan @theme inline di globals.css.",
-      status: "disetujui",
-      catatanGuru: "Bagus.",
-    },
-  ]);
+  const [jurnalList, setJurnalList] = React.useState<JurnalItem[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   const [formData, setFormData] = React.useState({
     tanggal: new Date().toISOString().slice(0, 10),
@@ -64,6 +50,23 @@ export default function SiswaJurnalPage() {
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+  const loadData = React.useCallback(async () => {
+    try {
+      const res = await fetchSiswaJurnalAction();
+      if (res.success && res.data) {
+        setJurnalList(res.data);
+      }
+    } catch (err) {
+      console.error("Gagal memuat jurnal:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.kegiatan.trim().length < 15) {
@@ -72,35 +75,35 @@ export default function SiswaJurnalPage() {
     }
 
     setIsSubmitting(true);
-    await createJurnalAction(formData);
+    const res = await createJurnalAction(formData);
 
-    const newJurnal = {
-      id: "j-" + Date.now(),
-      tanggal: formData.tanggal,
-      kegiatan: formData.kegiatan,
-      kendala: formData.kendala,
-      solusi: formData.solusi,
-      status: "menunggu",
-      catatanGuru: null,
-    };
+    if (!res.success) {
+      toast.error(res.error || "Gagal menyimpan jurnal.");
+      setIsSubmitting(false);
+      return;
+    }
 
-    setJurnalList((prev) => [newJurnal, ...prev]);
-    setIsSubmitting(false);
+    toast.success("Jurnal kegiatan harian berhasil dikirim untuk dievaluasi!");
     setFormData({
       tanggal: new Date().toISOString().slice(0, 10),
       kegiatan: "",
       kendala: "",
       solusi: "",
     });
-    toast.success("Jurnal kegiatan harian berhasil dikirim untuk dievaluasi!");
+    await loadData();
+    setIsSubmitting(false);
   };
 
   const handleDelete = async () => {
     if (!deletingId) return;
-    await deleteJurnalAction(deletingId);
-    setJurnalList((prev) => prev.filter((j) => j.id !== deletingId));
+    const res = await deleteJurnalAction(deletingId);
+    if (!res.success) {
+      toast.error(res.error || "Gagal menghapus jurnal.");
+      return;
+    }
     toast.success("Entri jurnal berhasil dihapus.");
     setDeletingId(null);
+    await loadData();
   };
 
   return (
@@ -209,69 +212,80 @@ export default function SiswaJurnalPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/40 border-b border-border/80">
-              <tr className="text-left font-bold text-muted-foreground">
-                <th className="p-4 uppercase tracking-wider">Tanggal</th>
-                <th className="p-4 uppercase tracking-wider">Uraian Kegiatan</th>
-                <th className="p-4 uppercase tracking-wider">Kendala & Solusi</th>
-                <th className="p-4 uppercase tracking-wider">Status & Catatan Guru</th>
-                <th className="p-4 uppercase tracking-wider text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {jurnalList.map((j) => (
-                <tr key={j.id} className="hover:bg-muted/20 transition-colors">
-                  <td className="p-4 font-mono font-medium text-foreground whitespace-nowrap">
-                    {j.tanggal}
-                  </td>
-                  <td className="p-4 max-w-sm">
-                    <p className="font-medium text-foreground leading-relaxed">
-                      {j.kegiatan}
-                    </p>
-                  </td>
-                  <td className="p-4 max-w-xs text-muted-foreground">
-                    <p className="line-clamp-1">K: {j.kendala || "-"}</p>
-                    <p className="line-clamp-1">S: {j.solusi || "-"}</p>
-                  </td>
-                  <td className="p-4">
-                    <Badge
-                      variant={
-                        j.status === "disetujui"
-                          ? "success"
-                          : j.status === "menunggu"
-                          ? "warning"
-                          : "destructive"
-                      }
-                      className="text-[10px] uppercase font-bold mb-1"
-                    >
-                      {j.status}
-                    </Badge>
-                    {j.catatanGuru && (
-                      <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold italic mt-0.5">
-                        "{j.catatanGuru}"
-                      </p>
-                    )}
-                  </td>
-                  <td className="p-4 text-right">
-                    {j.status !== "disetujui" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setDeletingId(j.id)}
-                        className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
-                        aria-label="Hapus jurnal"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground">Terkunci</span>
-                    )}
-                  </td>
+          {isLoading ? (
+            <div className="p-8 text-center text-xs text-muted-foreground flex items-center justify-center">
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              Memuat data jurnal...
+            </div>
+          ) : jurnalList.length === 0 ? (
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              Belum ada jurnal kegiatan yang dibuat. Silakan isi form di atas.
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="bg-muted/40 border-b border-border/80">
+                <tr className="text-left font-bold text-muted-foreground">
+                  <th className="p-4 uppercase tracking-wider">Tanggal</th>
+                  <th className="p-4 uppercase tracking-wider">Uraian Kegiatan</th>
+                  <th className="p-4 uppercase tracking-wider">Kendala & Solusi</th>
+                  <th className="p-4 uppercase tracking-wider">Status & Catatan Guru</th>
+                  <th className="p-4 uppercase tracking-wider text-right">Aksi</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {jurnalList.map((j) => (
+                  <tr key={j.id} className="hover:bg-muted/20 transition-colors">
+                    <td className="p-4 font-mono font-medium text-foreground whitespace-nowrap">
+                      {j.tanggal}
+                    </td>
+                    <td className="p-4 max-w-sm">
+                      <p className="font-medium text-foreground leading-relaxed">
+                        {j.kegiatan}
+                      </p>
+                    </td>
+                    <td className="p-4 max-w-xs text-muted-foreground">
+                      <p className="line-clamp-1">K: {j.kendala || "-"}</p>
+                      <p className="line-clamp-1">S: {j.solusi || "-"}</p>
+                    </td>
+                    <td className="p-4">
+                      <Badge
+                        variant={
+                          j.status === "disetujui"
+                            ? "success"
+                            : j.status === "menunggu"
+                            ? "warning"
+                            : "destructive"
+                        }
+                        className="text-[10px] uppercase font-bold mb-1"
+                      >
+                        {j.status}
+                      </Badge>
+                      {j.catatanGuru && (
+                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold italic mt-0.5">
+                          "{j.catatanGuru}"
+                        </p>
+                      )}
+                    </td>
+                    <td className="p-4 text-right">
+                      {j.status !== "disetujui" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeletingId(j.id)}
+                          className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10"
+                          aria-label="Hapus jurnal"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground">Terkunci</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </Card>
 
@@ -287,4 +301,3 @@ export default function SiswaJurnalPage() {
     </div>
   );
 }
-

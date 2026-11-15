@@ -58,40 +58,68 @@ export default async function SiswaDashboardPage() {
       </div>
 
       {/* 2. PENEMPATAN CARD */}
-      <Card className="p-6 border-blue-200/80 bg-blue-50/20 dark:border-blue-900/50 dark:bg-blue-950/10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
-              Informasi Penempatan Magang Aktif
-            </span>
-            <h2 className="text-xl font-extrabold text-foreground">
-              {data.placementInfo.dudiName}
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              {data.placementInfo.dudiAddress}
-            </p>
-          </div>
+      {data.hasPlacement && data.placementInfo ? (
+        <Card className="p-6 border-blue-200/80 bg-blue-50/20 dark:border-blue-900/50 dark:bg-blue-950/10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                Informasi Penempatan Magang Aktif
+              </span>
+              <h2 className="text-xl font-extrabold text-foreground">
+                {data.placementInfo.dudiName}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {data.placementInfo.dudiAddress}
+              </p>
+            </div>
 
-          <div className="flex flex-wrap items-center gap-6 pt-3 md:pt-0 border-t md:border-t-0 border-border text-xs">
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">
-                Guru Pembimbing
-              </p>
-              <p className="font-semibold text-foreground mt-0.5">
-                {data.placementInfo.guruName}
-              </p>
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase font-bold">
-                Periode Magang
-              </p>
-              <p className="font-semibold text-foreground mt-0.5">
-                {data.placementInfo.periode}
-              </p>
+            <div className="flex flex-wrap items-center gap-6 pt-3 md:pt-0 border-t md:border-t-0 border-border text-xs">
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase font-bold">
+                  Guru Pembimbing
+                </p>
+                <p className="font-semibold text-foreground mt-0.5">
+                  {data.placementInfo.guruName}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground uppercase font-bold">
+                  Periode Magang
+                </p>
+                <p className="font-semibold text-foreground mt-0.5">
+                  {data.placementInfo.periode}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      </Card>
+        </Card>
+      ) : (
+        <Card className="p-6 border-amber-200/80 bg-amber-50/30 dark:border-amber-900/40 dark:bg-amber-950/10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">
+                Status Magang: {data.siswa.status_magang === "menunggu" ? "Menunggu Persetujuan Admin" : "Belum Ditempatkan"}
+              </span>
+              <h2 className="text-lg font-bold text-foreground">
+                {data.siswa.status_magang === "menunggu"
+                  ? "Pengajuan Magang Sedang Ditinjau Administrator"
+                  : "Anda Belum Memiliki Penempatan Magang"}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                {data.siswa.status_magang === "menunggu"
+                  ? "Formulir usulan tempat magang Anda telah masuk ke sistem dan menunggu persetujuan dari administrator."
+                  : "Silakan pilih mitra industri atau kirimkan pengajuan tempat magang mandiri melalui menu Pengajuan Magang."}
+              </p>
+            </div>
+            <Link href="/siswa/pengajuan">
+              <Button className="font-bold gap-2">
+                Buka Pengajuan Magang
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </Card>
+      )}
 
       {/* 3. STAT CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">

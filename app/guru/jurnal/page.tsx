@@ -29,69 +29,18 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { validateJurnalAction, validateAbsensiAction } from "@/app/actions/crud";
+import {
+  validateJurnalAction,
+  validateAbsensiAction,
+  fetchGuruValidasiAction,
+} from "@/app/actions/crud";
 import { toast } from "sonner";
 
 export default function GuruJurnalPage() {
   const [activeTab, setActiveTab] = React.useState("jurnal");
-
-  // Jurnal list
-  const [jurnalList, setJurnalList] = React.useState([
-    {
-      id: "j1",
-      tanggal: "2026-11-12",
-      siswaName: "Siswa Magang",
-      nis: "21001",
-      kelas: "XII RPL 1",
-      kegiatan: "Implementasi autentikasi JWT dan middleware RBAC pada Next.js",
-      kendala: "Token refresh cookie sempat gagal tersimpan di browser.",
-      solusi: "Menambahkan opsi SameSite Lax dan Path / pada server action cookie.",
-      photoUrl: null,
-      status: "menunggu" as "menunggu" | "disetujui" | "revisi",
-      catatanGuru: null as string | null,
-    },
-    {
-      id: "j2",
-      tanggal: "2026-11-11",
-      siswaName: "Aditya Pratama",
-      nis: "21002",
-      kelas: "XII RPL 1",
-      kegiatan: "Merancang desain database PostgreSQL Supabase untuk 10 tabel utama",
-      kendala: "Penyesuaian foreign key delete cascade.",
-      solusi: "Membaca dokumentasi PostgreSQL dan spesifikasi UKK.",
-      photoUrl: null,
-      status: "disetujui" as "menunggu" | "disetujui" | "revisi",
-      catatanGuru: "Sangat baik, pertahankan kerapian ERD.",
-    },
-  ]);
-
-  // Absensi list
-  const [absensiList, setAbsensiList] = React.useState([
-    {
-      id: "a1",
-      tanggal: "2026-11-13",
-      siswaName: "Siswa Magang",
-      nis: "21001",
-      status: "hadir",
-      waktuMasuk: "07:30",
-      waktuPulang: "16:05",
-      photoUrl: null,
-      validasiStatus: "pending" as "pending" | "approved" | "rejected",
-      catatanGuru: null as string | null,
-    },
-    {
-      id: "a2",
-      tanggal: "2026-11-12",
-      siswaName: "Aditya Pratama",
-      nis: "21002",
-      status: "hadir",
-      waktuMasuk: "07:25",
-      waktuPulang: "16:00",
-      photoUrl: null,
-      validasiStatus: "approved" as "pending" | "approved" | "rejected",
-      catatanGuru: "Presensi terverifikasi tepat waktu.",
-    },
-  ]);
+  const [jurnalList, setJurnalList] = React.useState<any[]>([]);
+  const [absensiList, setAbsensiList] = React.useState<any[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
 
   // Modal states
   const [evaluatingJurnal, setEvaluatingJurnal] = React.useState<any | null>(null);
@@ -99,40 +48,58 @@ export default function GuruJurnalPage() {
   const [evalNotes, setEvalNotes] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
 
+  const loadData = React.useCallback(async () => {
+    try {
+      const res = await fetchGuruValidasiAction();
+      if (res.success && res.data) {
+        setJurnalList(res.data.jurnal);
+        setAbsensiList(res.data.absensi);
+      }
+    } catch (err) {
+      console.error("Gagal memuat data validasi guru:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    loadData();
+  }, [loadData]);
+
   // Handle Jurnal Validation
   const handleValidateJurnal = async (status: "disetujui" | "revisi") => {
     if (!evaluatingJurnal) return;
     setIsSaving(true);
-    await validateJurnalAction(evaluatingJurnal.id, status, evalNotes);
+    const res = await validateJurnalAction(evaluatingJurnal.id, status, evalNotes);
+    if (!res.success) {
+      toast.error(res.error || "Gagal memvalidasi jurnal.");
+      setIsSaving(false);
+      return;
+    }
 
-    setJurnalList((prev) =>
-      prev.map((j) =>
-        j.id === evaluatingJurnal.id ? { ...j, status, catatanGuru: evalNotes } : j
-      )
-    );
-
+    toast.success(`Jurnal berhasil ${status === "disetujui" ? "disetujui" : "diminta revisi"}.`);
     setIsSaving(false);
     setEvaluatingJurnal(null);
     setEvalNotes("");
-    toast.success(`Jurnal berhasil ${status === "disetujui" ? "disetujui" : "diminta revisi"}.`);
+    await loadData();
   };
 
   // Handle Absensi Validation
   const handleValidateAbsensi = async (status: "approved" | "rejected") => {
     if (!evaluatingAbsensi) return;
     setIsSaving(true);
-    await validateAbsensiAction(evaluatingAbsensi.id, status, evalNotes);
+    const res = await validateAbsensiAction(evaluatingAbsensi.id, status, evalNotes);
+    if (!res.success) {
+      toast.error(res.error || "Gagal memvalidasi presensi.");
+      setIsSaving(false);
+      return;
+    }
 
-    setAbsensiList((prev) =>
-      prev.map((a) =>
-        a.id === evaluatingAbsensi.id ? { ...a, validasiStatus: status, catatanGuru: evalNotes } : a
-      )
-    );
-
+    toast.success(`Presensi berhasil ${status === "approved" ? "disetujui" : "ditolak"}.`);
     setIsSaving(false);
     setEvaluatingAbsensi(null);
     setEvalNotes("");
-    toast.success(`Presensi berhasil ${status === "approved" ? "disetujui" : "ditolak"}.`);
+    await loadData();
   };
 
   return (

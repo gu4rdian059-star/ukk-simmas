@@ -19,6 +19,7 @@ import {
   CheckCircle,
   ShieldCheck,
   PanelLeftClose,
+  PanelLeftOpen,
   X,
 } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
@@ -102,6 +103,8 @@ interface DashboardSidebarProps {
   userName?: string;
   userEmail?: string;
   appName?: string;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
   isOpenMobile?: boolean;
   onCloseMobile?: () => void;
 }
@@ -111,6 +114,8 @@ export function DashboardSidebar({
   userName = "Pengguna",
   userEmail = "user@simmas.sch.id",
   appName = "vernoncorp",
+  isCollapsed = false,
+  onToggleCollapse,
   isOpenMobile = false,
   onCloseMobile,
 }: DashboardSidebarProps) {
@@ -167,38 +172,67 @@ export function DashboardSidebar({
       : "Siswa Magang";
 
   const content = (
-    <div className="flex h-screen max-h-screen w-64 flex-col justify-between border-r border-border bg-sidebar text-sidebar-foreground select-none">
+    <div
+      className={cn(
+        "flex h-screen max-h-screen flex-col justify-between border-r border-border bg-sidebar text-sidebar-foreground select-none transition-all duration-300 ease-in-out",
+        isCollapsed ? "w-[70px]" : "w-64"
+      )}
+    >
       {/* Sidebar Header */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-border/80 px-4">
-        <Link href="/" className="hover:opacity-90 transition-opacity">
-          <Logo
-            title={currentAppName}
-            subtitle={
-              role === "admin"
-                ? "ADMINISTRATOR"
-                : role === "guru"
-                ? "GURU PEMBIMBING"
-                : "SISWA MAGANG"
-            }
-          />
-        </Link>
-        <button
-          type="button"
-          onClick={onCloseMobile}
-          className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted border border-border/60 transition-colors lg:hidden"
-          aria-label="Tutup sidebar"
-        >
-          <PanelLeftClose className="h-4 w-4" />
-        </button>
+      <div
+        className={cn(
+          "flex h-16 shrink-0 items-center border-b border-border/80 transition-all duration-300",
+          isCollapsed ? "justify-center px-2" : "justify-between px-4"
+        )}
+      >
+        {!isCollapsed ? (
+          <>
+            <Link href="/" className="hover:opacity-90 transition-opacity min-w-0">
+              <Logo
+                title={currentAppName}
+                subtitle={
+                  role === "admin"
+                    ? "ADMINISTRATOR"
+                    : role === "guru"
+                    ? "GURU PEMBIMBING"
+                    : "SISWA MAGANG"
+                }
+              />
+            </Link>
+            {/* Close button ONLY on mobile drawer */}
+            {onCloseMobile && (
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/60 transition-colors cursor-pointer lg:hidden"
+                aria-label="Tutup sidebar"
+                title="Tutup sidebar"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </>
+        ) : (
+          <Link href="/" className="hover:opacity-90 transition-opacity flex items-center justify-center">
+            <Logo showText={false} />
+          </Link>
+        )}
       </div>
 
       {/* Sidebar Nav Items */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-3.5 py-4 space-y-6">
+      <div
+        className={cn(
+          "flex-1 overflow-y-auto min-h-0 space-y-6 transition-all duration-300",
+          isCollapsed ? "px-2 py-4" : "px-3.5 py-4"
+        )}
+      >
         {navGroups.map((group) => (
           <div key={group.label} className="space-y-1">
-            <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
-              {group.label}
-            </p>
+            {!isCollapsed && (
+              <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80 transition-opacity">
+                {group.label}
+              </p>
+            )}
             <div className="mt-1 space-y-0.5">
               {group.items.map((item) => {
                 const Icon = item.icon;
@@ -212,8 +246,12 @@ export function DashboardSidebar({
                     key={item.href}
                     href={item.href}
                     onClick={onCloseMobile}
+                    title={isCollapsed ? item.title : undefined}
                     className={cn(
-                      "flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-semibold transition-all group",
+                      "flex items-center rounded-xl text-xs font-semibold transition-all group",
+                      isCollapsed
+                        ? "justify-center h-10 w-10 mx-auto px-0"
+                        : "gap-3 px-3 py-2.5",
                       isActive
                         ? "bg-primary text-primary-foreground shadow-xs font-bold"
                         : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-foreground"
@@ -225,7 +263,7 @@ export function DashboardSidebar({
                         isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-sidebar-foreground"
                       )}
                     />
-                    <span className="truncate">{item.title}</span>
+                    {!isCollapsed && <span className="truncate">{item.title}</span>}
                   </Link>
                 );
               })}
@@ -235,19 +273,32 @@ export function DashboardSidebar({
       </div>
 
       {/* Sidebar Footer User Box */}
-      <div className="shrink-0 border-t border-border/80 p-3.5 bg-sidebar">
-        <div className="flex items-center gap-3 rounded-xl bg-sidebar-accent/60 p-2.5">
+      <div
+        className={cn(
+          "shrink-0 border-t border-border/80 bg-sidebar transition-all duration-300",
+          isCollapsed ? "p-2" : "p-3.5"
+        )}
+      >
+        <div
+          className={cn(
+            "flex items-center rounded-xl bg-sidebar-accent/60",
+            isCollapsed ? "justify-center p-1.5" : "gap-3 p-2.5"
+          )}
+          title={isCollapsed ? `${userName} (${roleLabel})` : undefined}
+        >
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary font-bold text-xs">
             {initials}
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-bold text-sidebar-foreground">
-              {userName}
-            </p>
-            <p className="truncate text-[10px] text-muted-foreground font-medium">
-              {roleLabel}
-            </p>
-          </div>
+          {!isCollapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-bold text-sidebar-foreground">
+                {userName}
+              </p>
+              <p className="truncate text-[10px] text-muted-foreground font-medium">
+                {roleLabel}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -256,7 +307,12 @@ export function DashboardSidebar({
   return (
     <>
       {/* Desktop Sidebar - Sticky Top-0, stays in place while body scrolls */}
-      <aside className="hidden lg:flex shrink-0 sticky top-0 h-screen z-30">
+      <aside
+        className={cn(
+          "hidden lg:flex shrink-0 sticky top-0 h-screen z-30 transition-all duration-300 ease-in-out",
+          isCollapsed ? "w-[70px]" : "w-64"
+        )}
+      >
         {content}
       </aside>
 

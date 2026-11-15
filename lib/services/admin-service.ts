@@ -37,7 +37,7 @@ const defaultSettings: AppSettings = {
 };
 
 export const adminService = {
-  // 1. Dashboard Stats
+  // 1. Dashboard Stats (100% Real Database Queries)
   async getDashboardStats() {
     try {
       const supabase = await getAdminDb();
@@ -48,6 +48,8 @@ export const adminService = {
         { count: totalGuru },
         { count: totalDudi },
         { count: pendingPengajuan },
+        { data: siswaList },
+        { data: pengajuanList },
         { data: dudiDist },
         { data: recentLogs },
       ] = await Promise.all([
@@ -55,88 +57,87 @@ export const adminService = {
         supabase.from("guru").select("*", { count: "exact", head: true }),
         supabase.from("tempat_magang").select("*", { count: "exact", head: true }),
         supabase.from("pengajuan_magang").select("*", { count: "exact", head: true }).eq("status", "menunggu"),
+        supabase.from("siswa").select("id, status_magang"),
+        supabase.from("pengajuan_magang").select("id, status, created_at"),
         supabase.from("tempat_magang").select("id, nama_perusahaan, alamat, kuota").limit(5),
-        supabase.from("activity_logs").select("*").order("timestamp", { ascending: false }).limit(5),
+        supabase.from("activity_logs").select("*").order("timestamp", { ascending: false }).limit(6),
       ]);
 
+      // Calculate real status distribution from siswaList in database
+      let sedangMagang = 0;
+      let lulus = 0;
+      let belumDitempatkan = 0;
+
+      if (siswaList && siswaList.length > 0) {
+        for (const s of siswaList) {
+          const st = (s.status_magang || "").toLowerCase();
+          if (st === "sedang_magang" || st === "magang" || st === "aktif") {
+            sedangMagang++;
+          } else if (st === "lulus" || st === "lulus_magang" || st === "selesai") {
+            lulus++;
+          } else {
+            belumDitempatkan++;
+          }
+        }
+      }
+
+      const totalStudents = totalSiswa ?? (siswaList ? siswaList.length : 0);
+      const sedangMagangPct = totalStudents > 0 ? Math.round((sedangMagang / totalStudents) * 100) : 0;
+      const lulusPct = totalStudents > 0 ? Math.round((lulus / totalStudents) * 100) : 0;
+      const belumDitempatkanPct = totalStudents > 0 ? Math.max(0, 100 - sedangMagangPct - lulusPct) : 0;
+      
+      let rawPengajuanData: any = pengajuanList;
+      if (!rawPengajuanData || rawPengajuanData.length === 0) {
+        const fb = await supabase.from("pengajuan_magang").select("id, status, tanggal_pengajuan");
+        if (fb.data && fb.data.length > 0) rawPengajuanData = fb.data;
+      }
+      const totalPengajuan = rawPengajuanData ? rawPengajuanData.length : 0;
+
       return {
-        totalSiswa: totalSiswa ?? 0,
+        totalSiswa: totalStudents,
         totalGuru: totalGuru ?? 0,
         totalDudi: totalDudi ?? 0,
         pendingPengajuan: pendingPengajuan ?? 0,
-        statusCounts: {
-          disetujui: 0,
-          menunggu: pendingPengajuan ?? 0,
-          ditolak: 0,
+        totalPengajuan,
+        rawPengajuan: (rawPengajuanData || []).map((p: any) => ({
+          id: p.id,
+          status: p.status,
+          date: p.created_at || p.tanggal_pengajuan || p.tanggal_mulai || new Date().toISOString(),
+        })),
+        placementStats: {
+          sedangMagang,
+          sedangMagangPct,
+          lulus,
+          lulusPct,
+          belumDitempatkan,
+          belumDitempatkanPct,
         },
         dudiDistribution: (dudiDist && dudiDist.length > 0) ? dudiDist.map((d: any) => ({
           name: d.nama_perusahaan,
           address: d.alamat,
-          active: 3,
           quota: d.kuota || 5,
-        })) : [
-          { name: "PT. Universal Big Data", address: "Tasikmadu, Malang", active: 7, quota: 10 },
-          { name: "PT. Telkom Indonesia", address: "Wonokromo, Surabaya", active: 4, quota: 8 },
-          { name: "PT CEO Batu Giok Shangsai", address: "Graha Family, Surabaya", active: 4, quota: 5 },
-          { name: "PT. Solusi Digital Nusantara", address: "Manyar, Surabaya", active: 3, quota: 6 },
-          { name: "CV. Media Grafika Kreatif", address: "Margorejo, Surabaya", active: 2, quota: 4 },
-        ],
-        recentLogs: (recentLogs && recentLogs.length > 0) ? recentLogs : [
-          {
-            id: "1",
-            actor_email: "admin@simmas.sch.id",
-            action_type: "LOGIN_SUCCESS",
-            entity_type: "AUTH",
-            level: "INFO",
-            created_at: new Date(Date.now() - 60000).toISOString(),
-          },
-          {
-            id: "2",
-            actor_email: "guru@simmas.sch.id",
-            action_type: "VALIDATE_JURNAL",
-            entity_type: "JURNAL",
-            level: "INFO",
-            created_at: new Date(Date.now() - 360000).toISOString(),
-          },
-          {
-            id: "3",
-            actor_email: "siswa@simmas.sch.id",
-            action_type: "SUBMIT_PRESENSI",
-            entity_type: "ABSENSI",
-            level: "INFO",
-            created_at: new Date(Date.now() - 720000).toISOString(),
-          },
-        ],
-        monthlyTrends: [
-          { month: "Jun", pengajuan: 4, disetujui: 4 },
-          { month: "Jul", pengajuan: 15, disetujui: 14 },
-          { month: "Agu", pengajuan: 8, disetujui: 7 },
-          { month: "Sep", pengajuan: 5, disetujui: 5 },
-          { month: "Okt", pengajuan: 6, disetujui: 5 },
-          { month: "Nov", pengajuan: 2, disetujui: 1 },
-        ],
+        })) : [],
+        recentLogs: recentLogs || [],
       };
-    } catch {
+    } catch (err: any) {
+      console.error("Error in getDashboardStats:", err);
       return {
-        totalSiswa: 33,
-        totalGuru: 20,
-        totalDudi: 7,
-        pendingPengajuan: 1,
-        statusCounts: { disetujui: 22, menunggu: 1, ditolak: 0 },
-        dudiDistribution: [
-          { name: "PT. Universal Big Data", address: "Tasikmadu, Malang", active: 7, quota: 10 },
-          { name: "PT. Telkom Indonesia", address: "Wonokromo, Surabaya", active: 4, quota: 8 },
-          { name: "PT CEO Batu Giok Shangsai", address: "Graha Family, Surabaya", active: 4, quota: 5 },
-        ],
+        totalSiswa: 0,
+        totalGuru: 0,
+        totalDudi: 0,
+        pendingPengajuan: 0,
+        totalPengajuan: 0,
+        rawPengajuan: [],
+        placementStats: {
+          sedangMagang: 0,
+          sedangMagangPct: 0,
+          lulus: 0,
+          lulusPct: 0,
+          belumDitempatkan: 0,
+          belumDitempatkanPct: 0,
+        },
+        dudiDistribution: [],
         recentLogs: [],
-        monthlyTrends: [
-          { month: "Jun", pengajuan: 4, disetujui: 4 },
-          { month: "Jul", pengajuan: 15, disetujui: 14 },
-          { month: "Agu", pengajuan: 8, disetujui: 7 },
-          { month: "Sep", pengajuan: 5, disetujui: 5 },
-          { month: "Okt", pengajuan: 6, disetujui: 5 },
-          { month: "Nov", pengajuan: 2, disetujui: 1 },
-        ],
       };
     }
   },
@@ -148,11 +149,14 @@ export const adminService = {
       const { data: siswa } = await supabase
         .from("siswa")
         .select(`
-          id, nis, nama, kelas, status_magang,
-          guru:guru_id ( nama ),
-          dudi:dudi_id ( nama_perusahaan )
+          id, nis, kelas, status_magang, created_at,
+          profiles:user_id ( nama, email ),
+          penempatan:penempatan_magang (
+            guru:guru_id ( id, profiles:user_id ( nama ) ),
+            tempat_magang:tempat_magang_id ( nama_perusahaan )
+          )
         `)
-        .order("nama", { ascending: true });
+        .order("created_at", { ascending: false });
 
       let kunjungan: any[] | null = null;
       const { data: k1, error: ke1 } = await supabase
@@ -182,51 +186,25 @@ export const adminService = {
       }
 
       return {
-        siswa: (siswa && siswa.length > 0) ? siswa.map((s: any) => ({
-          id: s.id,
-          nama: s.nama,
-          nis: s.nis,
-          kelas: s.kelas,
-          dudiName: s.dudi?.nama_perusahaan || "-",
-          guruName: s.guru?.nama || "-",
-          kehadiran: { hadir: 18, sakit: 1, izin: 1, alfa: 0 },
-          jumlahJurnal: 15,
-          status: s.status_magang === "magang" ? "Aktif" : s.status_magang === "selesai" ? "Selesai" : "Belum Aktif",
-        })) : [
-          {
-            id: "s1",
-            nama: "Siswa Magang",
-            nis: "21001",
-            kelas: "XII RPL 1",
-            dudiName: "PT. Universal Big Data",
-            guruName: "Guru Pembimbing, S.Kom.",
-            kehadiran: { hadir: 20, sakit: 0, izin: 1, alfa: 0 },
-            jumlahJurnal: 18,
-            status: "Aktif",
-          },
-          {
-            id: "s2",
-            nama: "Aditya Pratama",
-            nis: "21002",
-            kelas: "XII RPL 1",
-            dudiName: "PT. Universal Big Data",
-            guruName: "Guru Pembimbing, S.Kom.",
-            kehadiran: { hadir: 19, sakit: 1, izin: 0, alfa: 0 },
-            jumlahJurnal: 17,
-            status: "Aktif",
-          },
-          {
-            id: "s3",
-            nama: "Bella Safitri",
-            nis: "21003",
-            kelas: "XII RPL 1",
-            dudiName: "PT. Telkom Indonesia",
-            guruName: "Guru Pembimbing, S.Kom.",
-            kehadiran: { hadir: 21, sakit: 0, izin: 0, alfa: 0 },
-            jumlahJurnal: 20,
-            status: "Aktif",
-          },
-        ],
+        siswa: (siswa && siswa.length > 0) ? siswa.map((s: any) => {
+          const prof = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+          const pen = Array.isArray(s.penempatan) ? s.penempatan[0] : s.penempatan;
+          const tm = Array.isArray(pen?.tempat_magang) ? pen?.tempat_magang[0] : pen?.tempat_magang;
+          const g = Array.isArray(pen?.guru) ? pen?.guru[0] : pen?.guru;
+          const gProf = Array.isArray(g?.profiles) ? g?.profiles[0] : g?.profiles;
+
+          return {
+            id: s.id,
+            nama: prof?.nama || "Siswa",
+            nis: s.nis,
+            kelas: s.kelas,
+            dudiName: tm?.nama_perusahaan || "-",
+            guruName: gProf?.nama || "-",
+            kehadiran: { hadir: 18, sakit: 1, izin: 1, alfa: 0 },
+            jumlahJurnal: 15,
+            status: s.status_magang === "sedang_magang" || s.status_magang === "magang" ? "Aktif" : s.status_magang === "lulus" || s.status_magang === "selesai" ? "Selesai" : "Belum Aktif",
+          };
+        }) : [],
         kunjungan: (kunjungan && kunjungan.length > 0) ? kunjungan.map((k: any) => ({
           id: k.id,
           tanggal: k.tanggal,
@@ -234,36 +212,19 @@ export const adminService = {
           photoUrl: k.photo_url,
           guruName: k.guru?.nama || "-",
           dudiName: k.dudi?.nama_perusahaan || "-",
-        })) : [
-          {
-            id: "k1",
-            tanggal: "2026-11-11",
-            guruName: "Guru Pembimbing, S.Kom.",
-            dudiName: "PT. Universal Big Data",
-            catatan: "Monitoring adaptasi tim siswa magang.",
-            photoUrl: null,
-          },
-          {
-            id: "k2",
-            tanggal: "2026-10-20",
-            guruName: "Dra. Endang Wahyuni, M.Pd.",
-            dudiName: "PT. Telkom Indonesia",
-            catatan: "Evaluasi kedisiplinan dan capaian modul.",
-            photoUrl: null,
-          },
-        ],
+        })) : [],
         stats: {
-          totalSiswaAktif: 20,
-          tingkatKehadiran: "97%",
-          totalJurnalMingguIni: 34,
-          siswaPerluPerhatian: 2,
+          totalSiswaAktif: siswa ? siswa.length : 0,
+          tingkatKehadiran: "100%",
+          totalJurnalMingguIni: 0,
+          siswaPerluPerhatian: 0,
         },
       };
     } catch {
       return {
         siswa: [],
         kunjungan: [],
-        stats: { totalSiswaAktif: 20, tingkatKehadiran: "97%", totalJurnalMingguIni: 34, siswaPerluPerhatian: 2 },
+        stats: { totalSiswaAktif: 0, tingkatKehadiran: "100%", totalJurnalMingguIni: 0, siswaPerluPerhatian: 0 },
       };
     }
   },
@@ -326,57 +287,37 @@ export const adminService = {
       const { data, error } = await supabase
         .from("siswa")
         .select(`
-          id, nis, nama, email, kelas, status_magang,
-          guru:guru_id ( nama ),
-          dudi:dudi_id ( nama_perusahaan )
+          id, nis, kelas, status_magang, is_active, created_at,
+          profiles:user_id ( id, nama, email ),
+          penempatan:penempatan_magang (
+            tempat_magang:tempat_magang_id ( id, nama_perusahaan ),
+            guru:guru_id ( id, profiles:user_id ( nama ) )
+          )
         `)
-        .order("nama", { ascending: true });
+        .order("created_at", { ascending: false });
 
       if (error || !data || data.length === 0) {
-        return [
-          {
-            id: "10000000-0000-0000-0000-000000000001",
-            nis: "21001",
-            nama: "Siswa Magang",
-            email: "siswa@simmas.sch.id",
-            kelas: "XII RPL 1",
-            status_magang: "magang" as const,
-            industri: "PT. Universal Big Data",
-            guruPembimbing: "Guru Pembimbing, S.Kom.",
-          },
-          {
-            id: "10000000-0000-0000-0000-000000000002",
-            nis: "21002",
-            nama: "Aditya Pratama",
-            email: "aditya.pratama@simmas.sch.id",
-            kelas: "XII RPL 1",
-            status_magang: "magang" as const,
-            industri: "PT. Universal Big Data",
-            guruPembimbing: "Guru Pembimbing, S.Kom.",
-          },
-          {
-            id: "10000000-0000-0000-0000-000000000008",
-            nis: "21008",
-            nama: "Gilang Ramadhan",
-            email: "gilang.ramadhan@simmas.sch.id",
-            kelas: "XII RPL 1",
-            status_magang: "menunggu" as const,
-            industri: "PT. Solusi Digital Nusantara",
-            guruPembimbing: "-",
-          },
-        ];
+        return [];
       }
 
-      return data.map((s: any) => ({
-        id: s.id,
-        nis: s.nis,
-        nama: s.nama,
-        email: s.email,
-        kelas: s.kelas,
-        status_magang: s.status_magang,
-        industri: s.dudi?.nama_perusahaan || "-",
-        guruPembimbing: s.guru?.nama || "-",
-      }));
+      return data.map((s: any) => {
+        const prof = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        const pen = Array.isArray(s.penempatan) ? s.penempatan[0] : s.penempatan;
+        const tm = Array.isArray(pen?.tempat_magang) ? pen?.tempat_magang[0] : pen?.tempat_magang;
+        const g = Array.isArray(pen?.guru) ? pen?.guru[0] : pen?.guru;
+        const gProf = Array.isArray(g?.profiles) ? g?.profiles[0] : g?.profiles;
+
+        return {
+          id: s.id,
+          nis: s.nis,
+          nama: prof?.nama || "Siswa",
+          email: prof?.email || "-",
+          kelas: s.kelas,
+          status_magang: (s.status_magang === "sedang_magang" ? "magang" : s.status_magang) as any,
+          industri: tm?.nama_perusahaan || "-",
+          guruPembimbing: gProf?.nama || "-",
+        };
+      });
     } catch {
       return [];
     }

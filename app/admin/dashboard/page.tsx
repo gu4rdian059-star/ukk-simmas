@@ -26,99 +26,48 @@ export default async function AdminDashboardPage() {
     year: "numeric",
   }).format(new Date());
 
-  // Recent system activity logs with exact timestamps (jam)
-  const systemActivities = [
-    {
-      id: "log-1",
-      actor: "admin@simmas.sch.id",
-      actorName: "Administrator SIMMAS",
-      role: "admin",
-      roleLabel: "Admin",
-      avatarBg: "bg-blue-100 text-blue-700",
-      initials: "AD",
-      action: "LOGIN_SUCCESS",
-      description: "Login berhasil ke dalam sistem SIMMAS",
-      jam: "14:32 WIB",
-      tanggal: "Hari ini",
-      badgeVariant: "bg-blue-50 text-blue-700 border-blue-200/60",
-      badgeText: "INFO",
-    },
-    {
-      id: "log-2",
-      actor: "guru@simmas.sch.id",
-      actorName: "Guru Pembimbing, S.Kom.",
-      role: "guru",
-      roleLabel: "Guru",
-      avatarBg: "bg-emerald-100 text-emerald-700",
-      initials: "GP",
-      action: "VALIDATE_JURNAL",
-      description: "Menyetujui jurnal harian Siswa Magang (PT. Universal Big Data)",
-      jam: "13:15 WIB",
-      tanggal: "Hari ini",
-      badgeVariant: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
-      badgeText: "SUCCESS",
-    },
-    {
-      id: "log-3",
-      actor: "siswa@simmas.sch.id",
-      actorName: "Siswa Magang",
-      role: "siswa",
-      roleLabel: "Siswa",
-      avatarBg: "bg-purple-100 text-purple-700",
-      initials: "SI",
-      action: "SUBMIT_PENGAJUAN",
-      description: "Mengirimkan pengajuan magang ke PT. Solusi Digital Nusantara",
-      jam: "11:04 WIB",
-      tanggal: "Hari ini",
-      badgeVariant: "bg-blue-50 text-blue-700 border-blue-200/60",
-      badgeText: "INFO",
-    },
-    {
-      id: "log-4",
-      actor: "siswa@simmas.sch.id",
-      actorName: "Siswa Magang",
-      role: "siswa",
-      roleLabel: "Siswa",
-      avatarBg: "bg-purple-100 text-purple-700",
-      initials: "SI",
-      action: "SUBMIT_PRESENSI",
-      description: "Presensi masuk harian (Hadir) tepat waktu di PT. Universal Big Data",
-      jam: "08:00 WIB",
-      tanggal: "Hari ini",
-      badgeVariant: "bg-emerald-50 text-emerald-700 border-emerald-200/60",
-      badgeText: "SUCCESS",
-    },
-    {
-      id: "log-5",
-      actor: "admin@simmas.sch.id",
-      actorName: "Administrator SIMMAS",
-      role: "admin",
-      roleLabel: "Admin",
-      avatarBg: "bg-blue-100 text-blue-700",
-      initials: "AD",
-      action: "CREATE_DUDI",
-      description: "Menambahkan mitra industri baru: PT. CEO Batu Giok Shangsai",
-      jam: "16:45 WIB",
-      tanggal: "Kemarin",
-      badgeVariant: "bg-amber-50 text-amber-700 border-amber-200/60",
-      badgeText: "INFO",
-    },
-    {
-      id: "log-6",
-      actor: "guru@simmas.sch.id",
-      actorName: "Guru Pembimbing, S.Kom.",
-      role: "guru",
-      roleLabel: "Guru",
-      avatarBg: "bg-emerald-100 text-emerald-700",
-      initials: "GP",
-      action: "CREATE_KUNJUNGAN",
-      description: "Mencatat laporan kunjungan supervisi ke PT. Universal Big Data",
-      jam: "10:20 WIB",
-      tanggal: "Kemarin",
-      badgeVariant: "bg-blue-50 text-blue-700 border-blue-200/60",
-      badgeText: "INFO",
-    },
-  ];
+  // Real system activity logs from Supabase
+  const systemActivities = (data.recentLogs && data.recentLogs.length > 0)
+    ? data.recentLogs.map((act: any) => {
+        const d = act.timestamp || act.created_at ? new Date(act.timestamp || act.created_at) : new Date();
+        const jam = d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) + " WIB";
+        const tanggal = d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+        const role = act.actor_role || (act.actor_email?.includes("admin") ? "admin" : act.actor_email?.includes("guru") ? "guru" : "siswa");
+        const initials = role === "admin" ? "AD" : role === "guru" ? "GP" : "SI";
+        const avatarBg = role === "admin" ? "bg-blue-100 text-blue-700" : role === "guru" ? "bg-emerald-100 text-emerald-700" : "bg-purple-100 text-purple-700";
+        const roleLabel = role === "admin" ? "Admin" : role === "guru" ? "Guru" : "Siswa";
+
+        let desc = act.action_type || "Aktivitas Sistem";
+        if (act.action_type === "LOGIN_SUCCESS") desc = "Login berhasil ke sistem";
+        else if (act.action_type === "SISWA_CREATED") desc = `Menambahkan siswa baru: ${act.target || ""}`;
+        else if (act.action_type === "SISWA_UPDATED") desc = `Memperbarui data siswa: ${act.target || ""}`;
+        else if (act.action_type === "DUDI_CREATED") desc = `Menambahkan mitra DUDI: ${act.target || ""}`;
+        else if (act.action_type === "GURU_CREATED") desc = `Menambahkan guru pembimbing: ${act.target || ""}`;
+        else if (act.action_type === "UPDATE_SETTINGS") desc = `Memperbarui pengaturan sistem: ${act.target || ""}`;
+        else if (act.target) desc = `${act.action_type} - ${act.target}`;
+
+        return {
+          id: act.id,
+          actor: act.actor_email || "system@simmas.sch.id",
+          actorName: act.metadata?.nama || act.actor_email?.split("@")[0] || "Pengguna",
+          role,
+          roleLabel,
+          avatarBg,
+          initials,
+          action: act.action_type,
+          description: desc,
+          jam,
+          tanggal,
+          badgeVariant:
+            act.level === "ERROR"
+              ? "bg-red-50 text-red-700 border-red-200/60"
+              : act.level === "WARNING"
+              ? "bg-amber-50 text-amber-700 border-amber-200/60"
+              : "bg-blue-50 text-blue-700 border-blue-200/60",
+          badgeText: act.level || "INFO",
+        };
+      })
+    : [];
 
   return (
     <div className="space-y-6 w-full font-sans">
@@ -135,11 +84,17 @@ export default async function AdminDashboardPage() {
               Selamat datang kembali, Admin
             </h1>
             <p className="mt-1.5 text-sm text-blue-100/90">
-              Ada{" "}
-              <span className="font-bold text-white underline underline-offset-4">
-                1 pengajuan magang
-              </span>{" "}
-              yang menunggu peninjauan dan validasi Anda hari ini.
+              {data.pendingPengajuan > 0 ? (
+                <>
+                  Ada{" "}
+                  <span className="font-bold text-white underline underline-offset-4">
+                    {data.pendingPengajuan} pengajuan magang
+                  </span>{" "}
+                  yang menunggu peninjauan dan validasi Anda hari ini.
+                </>
+              ) : (
+                "Semua pengajuan magang telah terverifikasi dan terkelola secara teratur."
+              )}
             </p>
           </div>
           <Link href="/admin/penempatan">
@@ -227,17 +182,20 @@ export default async function AdminDashboardPage() {
                   Grafik volume usulan magang siswa per periode
                 </p>
               </div>
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
                 <TrendingUp className="h-3.5 w-3.5" />
-                +24%
+                {data.totalPengajuan} Usulan
               </span>
             </div>
 
-            <PengajuanTrendChart />
+            <PengajuanTrendChart
+              rawPengajuan={data.rawPengajuan}
+              totalPengajuan={data.totalPengajuan}
+            />
           </div>
 
           <div className="pt-4 mt-2 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
-            <span>Total 34 pengajuan terproses semester ini</span>
+            <span>Total {data.totalPengajuan} pengajuan terproses semester ini</span>
             <Link href="/admin/penempatan" className="font-bold text-blue-600 hover:underline">
               Kelola Penempatan →
             </Link>
@@ -268,10 +226,15 @@ export default async function AdminDashboardPage() {
                     <span className="h-2 w-2 rounded-full bg-blue-600" />
                     Sedang Magang
                   </span>
-                  <span className="text-foreground font-bold">22 (67%)</span>
+                  <span className="text-foreground font-bold">
+                    {data.placementStats.sedangMagang} ({data.placementStats.sedangMagangPct}%)
+                  </span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-blue-600 rounded-full" style={{ width: "67%" }} />
+                  <div
+                    className="h-full bg-blue-600 rounded-full transition-all duration-500"
+                    style={{ width: `${data.placementStats.sedangMagangPct}%` }}
+                  />
                 </div>
               </div>
 
@@ -281,10 +244,15 @@ export default async function AdminDashboardPage() {
                     <span className="h-2 w-2 rounded-full bg-emerald-500" />
                     Lulus Program
                   </span>
-                  <span className="text-foreground font-bold">8 (24%)</span>
+                  <span className="text-foreground font-bold">
+                    {data.placementStats.lulus} ({data.placementStats.lulusPct}%)
+                  </span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: "24%" }} />
+                  <div
+                    className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                    style={{ width: `${data.placementStats.lulusPct}%` }}
+                  />
                 </div>
               </div>
 
@@ -294,18 +262,25 @@ export default async function AdminDashboardPage() {
                     <span className="h-2 w-2 rounded-full bg-amber-500" />
                     Belum Ditempatkan
                   </span>
-                  <span className="text-foreground font-bold">3 (9%)</span>
+                  <span className="text-foreground font-bold">
+                    {data.placementStats.belumDitempatkan} ({data.placementStats.belumDitempatkanPct}%)
+                  </span>
                 </div>
                 <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
-                  <div className="h-full bg-amber-500 rounded-full" style={{ width: "9%" }} />
+                  <div
+                    className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                    style={{ width: `${data.placementStats.belumDitempatkanPct}%` }}
+                  />
                 </div>
               </div>
             </div>
           </div>
 
           <div className="pt-4 border-t border-border/60 text-[11px] text-muted-foreground flex items-center justify-between">
-            <span>Target keterserapan industri: 95%</span>
-            <span className="font-bold text-emerald-600">On Track</span>
+            <span>Total {data.totalSiswa} siswa terdaftar</span>
+            <span className="font-bold text-blue-600">
+              {data.placementStats.sedangMagangPct}% Aktif
+            </span>
           </div>
         </div>
       </div>
@@ -328,11 +303,19 @@ export default async function AdminDashboardPage() {
         </div>
 
         <div className="divide-y divide-border/60">
-          {systemActivities.map((act) => (
-            <div
-              key={act.id}
-              className="py-3.5 flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap hover:bg-muted/30 px-3 rounded-xl transition-colors"
-            >
+          {systemActivities.length === 0 ? (
+            <div className="py-10 text-center text-muted-foreground">
+              <p className="font-bold text-xs text-foreground">Belum ada aktivitas tercatat</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Semua log audit aktivitas sistem akan terekam dan ditampilkan di sini.
+              </p>
+            </div>
+          ) : (
+            systemActivities.map((act) => (
+              <div
+                key={act.id}
+                className="py-3.5 flex items-center justify-between gap-4 flex-wrap sm:flex-nowrap hover:bg-muted/30 px-3 rounded-xl transition-colors"
+              >
               {/* Left: User Avatar + Description */}
               <div className="flex items-center gap-3.5 min-w-0">
                 <div
@@ -372,8 +355,9 @@ export default async function AdminDashboardPage() {
                 </span>
               </div>
             </div>
-          ))}
-        </div>
+          ))
+        )}
+      </div>
       </div>
     </div>
   );

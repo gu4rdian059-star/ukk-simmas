@@ -27,6 +27,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ActionDropdown } from "@/components/shared/action-dropdown";
 import { toast } from "sonner";
 import type { Guru } from "@/types/database";
 import {
@@ -42,7 +43,6 @@ export default function AdminGuruPage() {
   const [search, setSearch] = React.useState("");
   const [filterJurusan, setFilterJurusan] = React.useState("Semua");
   const [filterStatus, setFilterStatus] = React.useState("Semua");
-  const [activeMenuId, setActiveMenuId] = React.useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = React.useState(false);
   const [editingGuru, setEditingGuru] = React.useState<Guru | null>(null);
@@ -55,14 +55,6 @@ export default function AdminGuruPage() {
     jurusan: "Rekayasa Perangkat Lunak",
     status: "aktif" as Guru["status"],
   });
-
-  React.useEffect(() => {
-    const handleClickOutside = () => setActiveMenuId(null);
-    if (activeMenuId) {
-      document.addEventListener("click", handleClickOutside);
-    }
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, [activeMenuId]);
 
   const filtered = guruList.filter((g) => {
     const matchSearch =
@@ -309,8 +301,8 @@ export default function AdminGuruPage() {
       </div>
 
       {/* 3. DATA TABLE CARD */}
-      <div className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-visible">
-        <div className="overflow-x-auto overflow-y-visible">
+      <div className="rounded-2xl border border-border/80 bg-card shadow-xs overflow-hidden">
+        <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead className="bg-muted/40 border-b border-border/80">
               <tr className="text-muted-foreground font-bold">
@@ -372,63 +364,31 @@ export default function AdminGuruPage() {
                       Aktif
                     </span>
                   </td>
-                  <td className="py-4 px-4 text-right whitespace-nowrap relative">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveMenuId(activeMenuId === guru.id ? null : guru.id);
-                      }}
-                      className="h-8 w-8 inline-flex items-center justify-center rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      aria-label="Aksi"
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
-
-                    {activeMenuId === guru.id && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute right-4 top-12 z-50 w-44 rounded-2xl border border-border bg-white p-1.5 shadow-xl text-left animate-in fade-in zoom-in-95 duration-100"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMenuId(null);
-                            handleOpenEdit(guru);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                        >
-                          <SquarePen className="h-4 w-4 text-muted-foreground" />
-                          <span>Edit Data</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMenuId(null);
-                            toast.info(`Membuka data ${guru.activeSiswa || 0} siswa bimbingan ${guru.nama}`);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-foreground rounded-xl hover:bg-muted/60 transition-colors"
-                        >
-                          <Eye className="h-4 w-4 text-muted-foreground" />
-                          <span>Lihat Siswa</span>
-                        </button>
-
-                        <div className="border-t border-border/60 my-1" />
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveMenuId(null);
-                            setDeletingId(guru.id);
-                          }}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-red-600 rounded-xl hover:bg-red-50 transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                          <span>Hapus</span>
-                        </button>
-                      </div>
-                    )}
+                  <td className="py-4 px-4 text-right whitespace-nowrap">
+                    <ActionDropdown
+                      items={[
+                        {
+                          label: "Edit Data",
+                          icon: SquarePen,
+                          onClick: () => handleOpenEdit(guru),
+                        },
+                        {
+                          label: "Lihat Siswa",
+                          icon: Eye,
+                          onClick: () =>
+                            toast.info(
+                              `Membuka data ${guru.activeSiswa || 0} siswa bimbingan ${guru.nama}`
+                            ),
+                        },
+                        {
+                          label: "Hapus",
+                          icon: Trash2,
+                          variant: "destructive",
+                          separatorBefore: true,
+                          onClick: () => setDeletingId(guru.id),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               )))}
